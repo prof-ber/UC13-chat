@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Client</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="chat-container">
+      <input
+        type="text"
+        id="message-input"
+        placeholder="Type your message here..."
+      />
+      <button id="send-button">Send</button>
+    </div>
+    <!-- Load Socket.IO from a CDN -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="index.js"></script>
+  </body>
+</html>

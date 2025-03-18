@@ -1,30 +1,27 @@
 import express from "express";
-const http = require("http");
-const socketIo = require("socket.io");
+import http from "http";
+import { Server as socketIo } from "socket.io";
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
+const io = new socketIo(server, {
   cors: {
-    origin: "*", // In production, replace with your GitHub Pages URL
+    origin: "*", // In production, replace with your actual client URL
     methods: ["GET", "POST"],
   },
 });
 const PORT = process.env.PORT || 3000;
-app.use(cors());
 
-//Posso fazer rotas de API express aqui
+// Example API route
 app.get("/api/example", (req, res) => {
   res.json({ message: "This is an example API route" });
 });
 
 io.on("connection", (socket) => {
   console.log("Novo cliente conectado");
-  //Evento desconexão
   socket.on("disconnect", () => {
     console.log("Cliente desconectado");
   });
-  //Evento de envio de mensagem para o servidor
   socket.on("message", (msg) => {
     console.log("Mensagem recebida:", msg);
     io.emit("message", msg);

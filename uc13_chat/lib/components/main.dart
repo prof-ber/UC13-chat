@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:mobx/mobx.dart';
+import 'list_message.dart';
+import '../entities/message_entity.dart';
 
 void main() {
   runApp(const MainApp());
@@ -10,21 +14,26 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: Scaffold(body: Center(child: MessageSender())));
+    return MaterialApp(
+      home: Scaffold(
+        body: ChatScreen(),
+      ),
+    );
   }
 }
 
-class MessageSender extends StatefulWidget {
-  const MessageSender({super.key});
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
 
   @override
-  MessageSenderState createState() => MessageSenderState();
+  ChatScreenState createState() => ChatScreenState();
 }
 
-class MessageSenderState extends State<MessageSender> {
+class ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   late IO.Socket socket;
   String connectionStatus = 'Disconnected';
+  final ObservableList<Message> messages = ObservableList<Message>();
 
   @override
   void initState() {
@@ -60,11 +69,21 @@ class MessageSenderState extends State<MessageSender> {
       });
       print('Connect Error: $err');
     });
+
+    socket.on('message', (data) {
+      setState(() {
+        messages.add(Message(name: 'Server', text: data.toString()));
+      });
+    });
   }
 
   void _sendMessage() {
     if (_controller.text.isNotEmpty) {
-      socket.emit('message', _controller.text);
+      final message = Message(name: 'You', text: _controller.text);
+      socket.emit('message', message.text);
+      setState(() {
+        messages.add(message);
+      });
       _controller.clear();
     }
   }
@@ -79,24 +98,40 @@ class MessageSenderState extends State<MessageSender> {
   @override
   Widget build(BuildContext context) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(connectionStatus),
-        SizedBox(height: 20),
-        TextField(
-          controller: _controller,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(),
-            labelText: 'Enter message',
+        Expanded(
+          child: ListMessageView(messages: messages),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              Text(connectionStatus),
+              SizedBox(height: 10),
+              TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Enter message',
+                ),
+              ),
+              SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
+                    child: Text('Send Message'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _connectToSocketIO,
+                    child: Text('Reconnect'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 20),
-        ElevatedButton(
-          onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
-          child: Text('Send Message'),
-        ),
-        SizedBox(height: 20),
-        ElevatedButton(onPressed: _connectToSocketIO, child: Text('Reconnect')),
       ],
     );
   }

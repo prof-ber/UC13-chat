@@ -14,24 +14,35 @@ class MessageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _MessageContainer(
-      messageDirection: direction,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            name,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+    return Align(
+      alignment: direction == MessageDirection.from
+          ? Alignment.centerLeft // Destinatário à esquerda
+          : Alignment.centerRight, // Remetente à direita
+      child: _MessageContainer(
+        messageDirection: direction,
+        child: Column(
+          crossAxisAlignment: direction == MessageDirection.from
+              ? CrossAxisAlignment.start // Alinha o conteúdo à esquerda
+              : CrossAxisAlignment.end, // Alinha o conteúdo à direita
+          children: [
+            Text(
+              name,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.white, // Cor do nome
+              ),
             ),
-          ),
-          Text(
-            message,
-            style: const TextStyle(fontSize: 14),
-          ),
-        ],
+            const SizedBox(height: 4), // Espaço entre o nome e a mensagem
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white, // Cor do texto da mensagem
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -47,30 +58,32 @@ class _MessageContainer extends Container {
     required Widget child,
     required MessageDirection messageDirection,
   }) : super(
-          child: child,
-          decoration: messageDirection == MessageDirection.from
-              ? const BoxDecoration(
-                  color: Colors.amberAccent,
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: child,
+          ),
+          decoration: BoxDecoration(
+            color: messageDirection == MessageDirection.from
+                ? Colors.grey[800] // Cor para mensagens do destinatário
+                : Colors.blueAccent, // Cor para mensagens do remetente
+            borderRadius: messageDirection == MessageDirection.from
+                ? const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  )
+                : const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
                   ),
-                )
-              : const BoxDecoration(
-                  color: Color.fromARGB(255, 74, 200, 220),
-                  borderRadius: BorderRadius.only(
-                    bottomRight: Radius.circular(20),
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-          margin: messageDirection == MessageDirection.from
-              ? const EdgeInsets.fromLTRB(100, 10, 10, 10)
-              : const EdgeInsets.fromLTRB(10, 10, 100, 10),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 15,
+          ),
+          margin: const EdgeInsets.symmetric(
+            vertical: 4.0,
+            horizontal: 8.0,
+          ),
+          constraints: const BoxConstraints(
+            maxWidth: 280, // Largura máxima da caixa de mensagem
           ),
         );
 }

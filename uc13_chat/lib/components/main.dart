@@ -97,42 +97,56 @@ class ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListMessageView(messages: messages),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            children: [
-              Text(connectionStatus),
-              SizedBox(height: 10),
-              TextField(
-                controller: _controller,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Enter message',
-                ),
-              ),
-              SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
-                    child: Text('Send Message'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _connectToSocketIO,
-                    child: Text('Reconnect'),
-                  ),
-                ],
-              ),
-            ],
+    return Scaffold(
+      body: Column(
+        children: [
+          // Barra de status da conexão
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            color: Colors.grey[200],
+            child: Text(
+              connectionStatus,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
-        ),
-      ],
+
+          // Lista de mensagens (expande para ocupar o espaço disponível)
+          Expanded(
+            child: ListMessageView(messages: messages),
+          ),
+
+          // Campo de texto e botões (fixo na parte inferior)
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            color: Colors.grey[200],
+            child: Column(
+              children: [
+                TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    labelText: 'Enter message',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
+                      child: const Text('Send Message'),
+                    ),
+                    ElevatedButton(
+                      onPressed: _connectToSocketIO,
+                      child: const Text('Reconnect'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

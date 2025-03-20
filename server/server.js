@@ -19,12 +19,15 @@ app.get("/api/example", (req, res) => {
 
 io.on("connection", (socket) => {
   console.log("Novo cliente conectado");
+  
   socket.on("disconnect", () => {
     console.log("Cliente desconectado");
   });
+  
   socket.on("message", (msg) => {
     console.log("Mensagem recebida:", msg);
-    io.emit("message", msg);
+    // Emite a mensagem para todos os clientes, exceto o remetente
+    socket.broadcast.emit("message", msg);
   });
 });
 

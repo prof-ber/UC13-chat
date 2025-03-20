@@ -4,6 +4,7 @@ import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
 import '../entities/message_entity.dart';
+import 'signup.dart';
 
 void main() {
   runApp(const MainApp());
@@ -16,7 +17,45 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        body: ChatScreen(),
+        body:
+            HomeScreen(), // Alterei para HomeScreen, que será a tela principal
+      ),
+    );
+  }
+}
+
+class HomeScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Chat App')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              onPressed: () {
+                // Navega para a tela de chat
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ChatScreen()),
+                );
+              },
+              child: Text('Entrar no Chat'),
+            ),
+            SizedBox(height: 20), // Espaçamento entre os botões
+            ElevatedButton(
+              onPressed: () {
+                // Navega para a tela de cadastro
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CadastroScreen()),
+                );
+              },
+              child: Text('Cadastrar'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -111,9 +150,7 @@ class ChatScreenState extends State<ChatScreen> {
           ),
 
           // Lista de mensagens (expande para ocupar o espaço disponível)
-          Expanded(
-            child: ListMessageView(messages: messages),
-          ),
+          Expanded(child: ListMessageView(messages: messages)),
 
           // Campo de texto e botões (fixo na parte inferior)
           Container(
@@ -133,7 +170,8 @@ class ChatScreenState extends State<ChatScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton(
-                      onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
+                      onPressed:
+                          connectionStatus == 'Connected' ? _sendMessage : null,
                       child: const Text('Send Message'),
                     ),
                     ElevatedButton(

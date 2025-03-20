@@ -7,7 +7,7 @@
 .buildlog/
 .history
 /server/node_modules
-
+/server/.env
 
 
 # Flutter repo-specific

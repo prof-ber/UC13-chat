@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import '../entities/message_entity.dart';
-
-import 'message_from.dart';
-import 'message_to.dart';
+import 'message.dart'; // Importação do MessageWidget
 
 class ListMessageView extends StatelessWidget {
   const ListMessageView({
@@ -23,26 +21,19 @@ class ListMessageView extends StatelessWidget {
           itemBuilder: (context, index) {
             final message = messages[index];
 
-            return Align(
-              alignment: message.name.toLowerCase() == "joão"
-                  ? Alignment.centerLeft // Destinatário à esquerda
-                  : Alignment.centerRight, // Remetente à direita
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0), // Espaço entre as mensagens
-                child: message.name.toLowerCase() == "joão"
-                    ? MessageFrom(
-                        name: message.name,
-                        message: message.text,
-                      )
-                    : MessageTo(
-                        name: message.name,
-                        message: message.text,
-                      ),
-              ),
+            // Verifica se a mensagem foi enviada pelo usuário atual
+            final isCurrentUser = message.name.toLowerCase() == "you";
+
+            return MessageWidget(
+              name: message.name,
+              message: message.text,
+              direction: isCurrentUser
+                  ? MessageDirection.to // Mensagem enviada pelo usuário atual
+                  : MessageDirection.from, // Mensagem recebida de outro usuário
             );
           },
         );
       },
     );
   }
-}   
+}

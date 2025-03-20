@@ -71,18 +71,31 @@ class ChatScreenState extends State<ChatScreen> {
     });
 
     socket.on('message', (data) {
+      final message = data as Map<String, dynamic>;
       setState(() {
-        messages.add(Message(name: 'Server', text: data.toString()));
+        messages.add(Message(
+          name: message['from'] ?? 'Unknown',
+          text: message['text'] ?? '',
+          to: message['to'] ?? 'All',
+        ));
       });
     });
   }
 
   void _sendMessage() {
     if (_controller.text.isNotEmpty) {
-      final message = Message(name: 'You', text: _controller.text);
-      socket.emit('message', message.text);
+      final message = {
+        'from': 'You',
+        'text': _controller.text,
+        'to': 'All',
+      };
+      socket.emit('message', message);
       setState(() {
-        messages.add(message);
+        messages.add(Message(
+          name: message['from'] as String? ?? 'Unknown',
+          text: message['text'] as String? ?? '',
+          to: message['to'] as String? ?? 'All',
+        ));
       });
       _controller.clear();
     }
@@ -100,7 +113,6 @@ class ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // Barra de status da conexão
           Container(
             padding: const EdgeInsets.all(8.0),
             color: Colors.grey[200],
@@ -109,13 +121,9 @@ class ChatScreenState extends State<ChatScreen> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
-
-          // Lista de mensagens (expande para ocupar o espaço disponível)
           Expanded(
             child: ListMessageView(messages: messages),
           ),
-
-          // Campo de texto e botões (fixo na parte inferior)
           Container(
             padding: const EdgeInsets.all(8.0),
             color: Colors.grey[200],
@@ -123,8 +131,8 @@ class ChatScreenState extends State<ChatScreen> {
               children: [
                 TextField(
                   controller: _controller,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
                     labelText: 'Enter message',
                   ),
                 ),

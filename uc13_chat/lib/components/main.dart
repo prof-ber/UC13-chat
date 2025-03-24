@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
 import '../entities/message_entity.dart';
@@ -71,18 +70,31 @@ class ChatScreenState extends State<ChatScreen> {
     });
 
     socket.on('message', (data) {
+      final message = data as Map<String, dynamic>;
       setState(() {
-        messages.add(Message(name: 'Server', text: data.toString()));
+        messages.add(Message(
+          name: message['from'] ?? 'Unknown',
+          text: message['text'] ?? '',
+          to: message['to'] ?? 'All',
+        ));
       });
     });
   }
 
   void _sendMessage() {
     if (_controller.text.isNotEmpty) {
-      final message = Message(name: 'You', text: _controller.text);
-      socket.emit('message', message.text);
+      final message = {
+        'from': 'You',
+        'text': _controller.text,
+        'to': 'All',
+      };
+      socket.emit('message', message);
       setState(() {
-        messages.add(message);
+        messages.add(Message(
+          name: message['from'] ?? 'You',
+          text: message['text'] ?? '',
+          to: message['to'] ?? 'All',
+        ));
       });
       _controller.clear();
     }
@@ -96,57 +108,68 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          // Barra de status da conexão
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            color: Colors.grey[200],
-            child: Text(
-              connectionStatus,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: const Color(0xFF1e1e1e), // Fundo principal
+    body: Column(
+      children: [
+        // Barra de status da conexão
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          color: const Color(0xFF252526), // Fundo secundário
+          child: Text(
+            connectionStatus,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFd4d4d4), // Texto cinza claro
             ),
           ),
+        ),
 
-          // Lista de mensagens (expande para ocupar o espaço disponível)
-          Expanded(
+        // Lista de mensagens
+        Expanded(
+          child: Container(
+            color: const Color(0xFF1e1e1e), // Fundo principal
             child: ListMessageView(messages: messages),
           ),
+        ),
 
-          // Campo de texto e botões (fixo na parte inferior)
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            color: Colors.grey[200],
-            child: Column(
-              children: [
-                TextField(
-                  controller: _controller,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    labelText: 'Enter message',
+        // Campo de texto e botões
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          color: const Color(0xFF252526), // Fundo secundário
+          child: Column(
+            children: [
+              TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Enter message',
+                  labelStyle: TextStyle(color: Color(0xFFd4d4d4)), // Texto cinza claro
+                ),
+                style: const TextStyle(color: Color(0xFFd4d4d4)), // Texto cinza claro
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
+                    child: const Text('Send Message'),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
-                      child: const Text('Send Message'),
-                    ),
-                    ElevatedButton(
-                      onPressed: _connectToSocketIO,
-                      child: const Text('Reconnect'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  ElevatedButton(
+                    onPressed: _connectToSocketIO,
+                    child: const Text('Reconnect'),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 }

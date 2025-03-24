@@ -1,21 +1,7 @@
 class Message {
-  Message({
-    required this.name,
-    required this.text,
-  });
-
   final String name;
   final String text;
+  final String to;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'text': text,
-    };
-  }
-
-  factory Message.fromJson(Map<String, dynamic> json) => Message(
-        name: json['name'],
-        text: json['text'],
-      );
+  Message({required this.name, required this.text, required this.to});
 }

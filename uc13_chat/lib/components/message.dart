@@ -29,8 +29,8 @@ class MessageWidget extends StatelessWidget {
               name,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.white, // Cor do nome
+                fontSize: 12,
+                color: Color.fromARGB(179, 222, 44, 44), // Cor do nome (transparente)
               ),
             ),
             const SizedBox(height: 4), // Espaço entre o nome e a mensagem
@@ -38,7 +38,7 @@ class MessageWidget extends StatelessWidget {
               message,
               style: const TextStyle(
                 fontSize: 14,
-                color: Colors.white, // Cor do texto da mensagem
+                color: Color.fromARGB(255, 113, 19, 19), // Cor do texto da mensagem
               ),
             ),
           ],
@@ -77,6 +77,13 @@ class _MessageContainer extends Container {
                     topRight: Radius.circular(16),
                     bottomLeft: Radius.circular(16),
                   ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           margin: const EdgeInsets.symmetric(
             vertical: 4.0,

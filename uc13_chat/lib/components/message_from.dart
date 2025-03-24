@@ -15,29 +15,41 @@ class MessageFrom extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
-        color: Colors.grey[300], // Cor de fundo para mensagens do destinatário
+        color: const Color(0xFF6a0dad), // Roxo escuro
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(16.0),
           topRight: Radius.circular(16.0),
           bottomRight: Radius.circular(16.0),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, // Alinha o conteúdo à esquerda
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             name,
             style: TextStyle(
-              color: Colors.black.withOpacity(0.8),
+              fontFamily: 'RobotoMono', // Fonte Roboto Mono
+              fontWeight: FontWeight.bold, // Versão bold
               fontSize: 12.0,
+              color: Colors.white.withOpacity(0.8),
+              letterSpacing: -0.5, // Condensa as letras
             ),
           ),
-          const SizedBox(height: 4.0), // Espaço entre o nome e a mensagem
+          const SizedBox(height: 4.0),
           Text(
             message,
             style: const TextStyle(
-              color: Colors.black,
+              fontFamily: 'RobotoMono', // Fonte Roboto Mono
               fontSize: 14.0,
+              color: Colors.white,
+              letterSpacing: -0.5, // Condensa as letras
             ),
           ),
         ],

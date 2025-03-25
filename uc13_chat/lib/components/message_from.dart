@@ -1,4 +1,3 @@
-// message_from.dart
 import 'package:flutter/material.dart';
 
 class MessageFrom extends StatelessWidget {
@@ -19,15 +18,17 @@ class MessageFrom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.75, // 75% da largura da tela
-      ),
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
         padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: const Color(0xFF6a0dad),
-          borderRadius: BorderRadius.only(
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(16.0),
             topRight: Radius.circular(16.0),
             bottomRight: Radius.circular(16.0),
@@ -42,6 +43,7 @@ class MessageFrom extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               name,
@@ -63,6 +65,7 @@ class MessageFrom extends StatelessWidget {
                 letterSpacing: -0.5,
               ),
             ),
+            const SizedBox(height: 4.0),
             Align(
               alignment: Alignment.bottomRight,
               child: Text(

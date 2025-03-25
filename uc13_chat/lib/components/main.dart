@@ -70,31 +70,23 @@ class ChatScreenState extends State<ChatScreen> {
     });
 
     socket.on('message', (data) {
-      final message = data as Map<String, dynamic>;
       setState(() {
-        messages.add(Message(
-          name: message['from'] ?? 'Unknown',
-          text: message['text'] ?? '',
-          to: message['to'] ?? 'All',
-        ));
+        messages.add(Message.fromJson(data));
       });
     });
   }
 
   void _sendMessage() {
     if (_controller.text.isNotEmpty) {
-      final message = {
-        'from': 'You',
-        'text': _controller.text,
-        'to': 'All',
-      };
-      socket.emit('message', message);
+      final message = Message(
+        name: 'You',
+        text: _controller.text,
+        to: 'All',
+        timestamp: DateTime.now(),
+      );
+      socket.emit('message', message.toJson());
       setState(() {
-        messages.add(Message(
-          name: message['from'] ?? 'You',
-          text: message['text'] ?? '',
-          to: message['to'] ?? 'All',
-        ));
+        messages.add(message);
       });
       _controller.clear();
     }

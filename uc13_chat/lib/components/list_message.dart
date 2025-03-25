@@ -1,9 +1,7 @@
-// list_message.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import '../entities/message_entity.dart';
-import 'message_from.dart';
-import 'message_to.dart';
+import 'message.dart';
 
 class ListMessageView extends StatelessWidget {
   const ListMessageView({
@@ -19,29 +17,19 @@ class ListMessageView extends StatelessWidget {
       builder: (context) {
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          reverse: true,
+          physics: const BouncingScrollPhysics(),
           itemCount: messages.length,
           itemBuilder: (context, index) {
-            final message = messages[index];
+            final messageIndex = messages.length - 1 - index;
+            final message = messages[messageIndex];
             final isCurrentUser = message.name.toLowerCase() == "you";
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Align(
-                alignment: isCurrentUser
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: isCurrentUser
-                    ? MessageTo(
-                        name: message.name,
-                        message: message.text,
-                        timestamp: message.timestamp,
-                      )
-                    : MessageFrom(
-                        name: message.name,
-                        message: message.text,
-                        timestamp: message.timestamp,
-                      ),
-              ),
+            return MessageWidget(
+              name: message.name,
+              message: message.text,
+              timestamp: message.timestamp,
+              direction: isCurrentUser ? MessageDirection.to : MessageDirection.from,
             );
           },
         );

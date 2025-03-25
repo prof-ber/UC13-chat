@@ -1,75 +1,175 @@
 import 'package:flutter/material.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:mobx/mobx.dart';
+import 'list_message.dart';
+import '../entities/message_entity.dart';
 
-class MessageTo extends StatelessWidget {
-  const MessageTo({
-    super.key,
-    required this.name,
-    required this.message,
-    required this.timestamp,
-  });
+void main() {
+  runApp(const MainApp());
+}
 
-  final String name;
-  final String message;
-  final DateTime timestamp;
-
-  String _formatAviationTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-  }
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF00bcd4),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(16.0),
-          topRight: Radius.circular(16.0),
-          bottomLeft: Radius.circular(16.0),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            name,
-            style: TextStyle(
-              fontFamily: 'RobotoMono',
-              fontWeight: FontWeight.bold,
-              fontSize: 12.0,
-              color: Colors.white.withOpacity(0.8),
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 4.0),
-          Text(
-            message,
-            style: const TextStyle(
-              fontFamily: 'RobotoMono',
-              fontSize: 14.0,
-              color: Colors.white,
-              letterSpacing: -0.5,
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomLeft,
-            child: Text(
-              _formatAviationTime(timestamp),
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white.withOpacity(0.6),
-              ),
-            ),
-          ),
-        ],
+    return MaterialApp(
+      home: Scaffold(
+        body: ChatScreen(),
       ),
     );
   }
+}
+
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
+
+  @override
+  ChatScreenState createState() => ChatScreenState();
+}
+
+class ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _controller = TextEditingController();
+  late IO.Socket socket;
+  String connectionStatus = 'Disconnected';
+  final ObservableList<Message> messages = ObservableList<Message>();
+
+  @override
+  void initState() {
+    super.initState();
+    _connectToSocketIO();
+  }
+
+  void _connectToSocketIO() {
+    socket = IO.io('http://localhost:3000', <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false,
+    });
+
+    socket.connect();
+
+    socket.onConnect((_) {
+      setState(() {
+        connectionStatus = 'Connected';
+      });
+      print('Connection established');
+    });
+
+    socket.onDisconnect((_) {
+      setState(() {
+        connectionStatus = 'Disconnected';
+      });
+      print('Connection Disconnected');
+    });
+
+    socket.onConnectError((err) {
+      setState(() {
+        connectionStatus = 'Connection Error: $err';
+      });
+      print('Connect Error: $err');
+    });
+
+    socket.on('message', (data) {
+      final message = data as Map<String, dynamic>;
+      setState(() {
+        messages.add(Message(
+          name: message['from'] ?? 'Unknown',
+          text: message['text'] ?? '',
+          to: message['to'] ?? 'All',
+        ));
+      });
+    });
+  }
+
+  void _sendMessage() {
+    if (_controller.text.isNotEmpty) {
+      final message = {
+        'from': 'You',
+        'text': _controller.text,
+        'to': 'All',
+      };
+      socket.emit('message', message);
+      setState(() {
+        messages.add(Message(
+          name: message['from'] ?? 'You',
+          text: message['text'] ?? '',
+          to: message['to'] ?? 'All',
+        ));
+      });
+      _controller.clear();
+    }
+  }
+
+  @override
+  void dispose() {
+    socket.disconnect();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: const Color(0xFF1e1e1e), // Fundo principal
+    body: Column(
+      children: [
+        // Barra de status da conexão
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          color: const Color(0xFF252526), // Fundo secundário
+          child: Text(
+            connectionStatus,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFd4d4d4), // Texto cinza claro
+            ),
+          ),
+        ),
+
+        // Lista de mensagens
+        Expanded(
+          child: Container(
+            color: const Color(0xFF1e1e1e), // Fundo principal
+            child: ListMessageView(messages: messages),
+          ),
+        ),
+
+        // Campo de texto e botões
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          color: const Color(0xFF252526), // Fundo secundário
+          child: Column(
+            children: [
+              TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Enter message',
+                  labelStyle: TextStyle(color: Color(0xFFd4d4d4)), // Texto cinza claro
+                ),
+                style: const TextStyle(color: Color(0xFFd4d4d4)), // Texto cinza claro
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: connectionStatus == 'Connected' ? _sendMessage : null,
+                    child: const Text('Send Message'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _connectToSocketIO,
+                    child: const Text('Reconnect'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
 }

@@ -1,59 +1,13 @@
 import 'package:flutter/material.dart';
+import 'message.dart';
 
-class MessageTo extends StatelessWidget {
+class MessageTo extends MessageWidget {
   const MessageTo({
-    Key? key,
-    required this.name,
-    required this.message,
-  }) : super(key: key);
-
-  final String name;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF00bcd4), // Azul neon
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(16.0),
-          topRight: Radius.circular(16.0),
-          bottomLeft: Radius.circular(16.0),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            name,
-            style: TextStyle(
-              fontFamily: 'RobotoMono', // Fonte Roboto Mono
-              fontWeight: FontWeight.bold, // Versão bold
-              fontSize: 12.0,
-              color: Colors.white.withOpacity(0.8),
-              letterSpacing: -0.5, // Condensa as letras
-            ),
-          ),
-          const SizedBox(height: 4.0),
-          Text(
-            message,
-            style: const TextStyle(
-              fontFamily: 'RobotoMono', // Fonte Roboto Mono
-              fontSize: 14.0,
-              color: Colors.white,
-              letterSpacing: -0.5, // Condensa as letras
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    super.key,
+    required super.message,
+    required super.timestamp,
+  }) : super(
+          direction: MessageDirection.to,
+          name: 'Você', // Valor padrão
+        );
 }

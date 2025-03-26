@@ -1,44 +1,94 @@
 import 'package:flutter/material.dart';
 
+enum MessageDirection { from, to }
+
 class MessageWidget extends StatelessWidget {
   const MessageWidget({
-    Key? key,
+    super.key,
     required this.name,
     required this.message,
-    this.direction = MessageDirection.from,
-  }) : super(key: key);
+    required this.timestamp,
+    required this.direction,
+  });
 
   final String name;
   final String message;
+  final DateTime timestamp;
   final MessageDirection direction;
+
+  // Estilos centralizados
+  static const Color _fromColor = Color(0xFF6a0dad);
+  static const Color _toColor = Color(0xFF00bcd4);
+  static const String _fontFamily = 'RobotoMono';
+  static const _boxShadow = BoxShadow(
+    color: Colors.black38,
+    blurRadius: 4,
+    offset: Offset(0, 2),
+  );
+
+  BorderRadius _getBorderRadius() {
+    return direction == MessageDirection.from
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          )
+        : const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+          );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: direction == MessageDirection.from
-          ? Alignment.centerLeft // Destinatário à esquerda
-          : Alignment.centerRight, // Remetente à direita
-      child: _MessageContainer(
-        messageDirection: direction,
+      alignment: direction == MessageDirection.from 
+          ? Alignment.centerLeft 
+          : Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: direction == MessageDirection.from ? _fromColor : _toColor,
+          borderRadius: _getBorderRadius(),
+          boxShadow: const [_boxShadow],
+        ),
         child: Column(
-          crossAxisAlignment: direction == MessageDirection.from
-              ? CrossAxisAlignment.start // Alinha o conteúdo à esquerda
-              : CrossAxisAlignment.end, // Alinha o conteúdo à direita
+          crossAxisAlignment: direction == MessageDirection.from 
+              ? CrossAxisAlignment.start 
+              : CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              name,
+              direction == MessageDirection.to ? 'Você' : name,
               style: const TextStyle(
+                fontFamily: _fontFamily,
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
-                color: Color.fromARGB(179, 222, 44, 44), // Cor do nome (transparente)
+                color: Colors.white70,
+                letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(height: 4), // Espaço entre o nome e a mensagem
+            const SizedBox(height: 4),
             Text(
               message,
               style: const TextStyle(
+                fontFamily: _fontFamily,
                 fontSize: 14,
-                color: Color.fromARGB(255, 113, 19, 19), // Cor do texto da mensagem
+                color: Colors.white,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _formatTime(timestamp),
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white60,
               ),
             ),
           ],
@@ -46,51 +96,8 @@ class MessageWidget extends StatelessWidget {
       ),
     );
   }
-}
 
-enum MessageDirection {
-  from,
-  to,
-}
-
-class _MessageContainer extends Container {
-  _MessageContainer({
-    required Widget child,
-    required MessageDirection messageDirection,
-  }) : super(
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: child,
-          ),
-          decoration: BoxDecoration(
-            color: messageDirection == MessageDirection.from
-                ? Colors.grey[800] // Cor para mensagens do destinatário
-                : Colors.blueAccent, // Cor para mensagens do remetente
-            borderRadius: messageDirection == MessageDirection.from
-                ? const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
-                  )
-                : const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                  ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          margin: const EdgeInsets.symmetric(
-            vertical: 4.0,
-            horizontal: 8.0,
-          ),
-          constraints: const BoxConstraints(
-            maxWidth: 280, // Largura máxima da caixa de mensagem
-          ),
-        );
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
 }

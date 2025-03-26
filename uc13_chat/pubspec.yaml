@@ -9,7 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  image_picker: ^0.8.7+5
   http: ^0.13.4
+  shared_preferences: ^2.0.8
   web_socket_channel: ^2.1.0
   socket_io_client: ^2.0.2
   flutter_mobx: ^2.0.6+5

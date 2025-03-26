@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:mobx/mobx.dart';
 import 'components/list_message.dart';
 import 'entities/message_entity.dart';
 import 'components/signup.dart';
+import 'components/profile_picture.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MainApp());
@@ -21,6 +22,7 @@ class MainApp extends StatelessWidget {
   }
 }
 
+// arquivo separado
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -28,11 +30,37 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool isLoggedIn = false;
+  String? userId;
 
-  void setLoggedIn(bool value) {
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedUserId = prefs.getString('userId');
+    if (storedUserId != null) {
+      setState(() {
+        isLoggedIn = true;
+        userId = storedUserId;
+      });
+    }
+  }
+
+  void setLoggedIn(bool value, String? newUserId) {
     setState(() {
       isLoggedIn = value;
+      userId = newUserId;
     });
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userId');
+    await prefs.remove('token');
+    setLoggedIn(false, null);
   }
 
   @override
@@ -43,11 +71,12 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            if (isLoggedIn && userId != null) ProfilePicture(userId: userId!),
+            SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 if (isLoggedIn) {
-                  // Implement logout logic here
-                  setLoggedIn(false);
+                  _logout();
                 } else {
                   Navigator.push(
                     context,
@@ -72,35 +101,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text('Entrar no Chat'),
               ),
             SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => CadastroScreen()),
-                );
-              },
-              child: Text('Cadastrar'),
-            ),
+            if (!isLoggedIn)
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => CadastroScreen()),
+                  );
+                },
+                child: Text('Cadastrar'),
+              ),
           ],
         ),
       ),
     );
   }
 }
+// arquivo separado
 
+// arquivo separado
 class LoginScreen extends StatefulWidget {
-  final Function(bool) setLoggedIn;
+  final Function(bool, String?) setLoggedIn;
 
   LoginScreen({required this.setLoggedIn});
-
-  @override
-  _LoginScreenState createState() => _LoginScreenState();
-}
-
-class LoginScreenState extends StatefulWidget {
-  final Function(bool) setLoggedIn;
-
-  LoginScreenState({required this.setLoggedIn});
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -117,9 +140,9 @@ class _LoginScreenState extends State<LoginScreen> {
       String name = _nameController.text;
       String password = _passwordController.text;
 
-      // Prepare the request body
       Map<String, String> body = {'nome': name, 'senha': password};
       try {
+        print('Sending login request with body: ${jsonEncode(body)}');
         final response = await http.post(
           Uri.parse('http://localhost:3000/api/login'),
           headers: <String, String>{
@@ -128,28 +151,28 @@ class _LoginScreenState extends State<LoginScreen> {
           body: jsonEncode(body),
         );
 
+        print('Response status: ${response.statusCode}');
+        print('Response body: ${response.body}');
+
         if (response.statusCode == 200) {
-          // Successful login
           Map<String, dynamic> data = jsonDecode(response.body);
+          String userId = data['usuario']['id'];
+          String token = data['token'];
 
-          // TODO: Store the user data securely (e.g., using flutter_secure_storage)
-          // String userId = data['usuario']['id'];
-          // String token = data['token'];
-          // String sessionId = data['sessionId'];
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('userId', userId);
+          await prefs.setString('token', token);
 
-          // For now, we'll just print them to demonstrate they're being received
-          print('Logged in user name: ${data['usuario']['nome']}');
-          print('Received token: ${data['token']}');
-          print('Session ID: ${data['sessionId']}');
-
-          widget.setLoggedIn(true);
+          widget.setLoggedIn(true, userId);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Login realizado com sucesso!')),
           );
 
-          Navigator.pop(context); // Go back to HomeScreen
+          // Navigate back to HomeScreen
+          Navigator.of(context).popUntil((route) => route.isFirst);
         } else {
-          // Login failed
+          print('Login failed. Status code: ${response.statusCode}');
+          print('Response body: ${response.body}');
           Map<String, dynamic> data = jsonDecode(response.body);
           setState(() {
             _errorMessage = data['error'] ?? 'Erro ao fazer login';
@@ -226,7 +249,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 }
+// arquivo separado
 
+// arquivo separado
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -350,3 +375,4 @@ class ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+// arquivo separado

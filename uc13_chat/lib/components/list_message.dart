@@ -23,13 +23,14 @@ class ListMessageView extends StatelessWidget {
           itemBuilder: (context, index) {
             final messageIndex = messages.length - 1 - index;
             final message = messages[messageIndex];
-            final isCurrentUser = message.name.toLowerCase() == "you";
-
+            
             return MessageWidget(
               name: message.name,
               message: message.text,
               timestamp: message.timestamp,
-              direction: isCurrentUser ? MessageDirection.to : MessageDirection.from,
+              direction: message.name.toLowerCase() == "you" 
+                  ? MessageDirection.to 
+                  : MessageDirection.from,
             );
           },
         );

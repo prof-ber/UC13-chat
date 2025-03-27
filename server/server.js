@@ -359,7 +359,18 @@ io.on("connection", (socket) => {
 
   socket.on("message", (msg) => {
     console.log("Mensagem recebida:", msg);
-    socket.broadcast.emit("message", msg);
+
+    // Adiciona o remetente (nome do cliente) à mensagem
+    const messageWithSender = {
+      ...msg, // Mantém os campos originais (text e to)
+      from: socket.id, // Ou um nome de usuário, se disponível
+    };
+
+    // Emite a mensagem para todos os clientes, exceto o remetente
+    socket.broadcast.emit("message", messageWithSender);
+
+    // Removemos a linha que emitia a mensagem de volta para o remetente
+    // socket.emit("message", messageWithSender);
   });
 });
 

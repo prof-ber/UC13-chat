@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "uc13_chat",
+            "cwd": "uc13_chat",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "uc13_chat (profile mode)",
+            "cwd": "uc13_chat",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "uc13_chat (release mode)",
+            "cwd": "uc13_chat",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

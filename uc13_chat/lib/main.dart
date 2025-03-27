@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'chat_screen.dart';
+import 'components/home_screen.dart';
 
 void main() {
   runApp(const MainApp());
@@ -10,11 +10,6 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: ChatScreen(),
-      ),
-    );
+    return MaterialApp(home: HomeScreen());
   }
 }
-

@@ -15,7 +15,7 @@ class ProfilePicture extends StatefulWidget {
 
 class _ProfilePictureState extends State<ProfilePicture> {
   Uint8List? _imageData;
-  final String baseUrl = 'http://172.17.9.150:3000';
+  final String baseUrl = 'http://172.17.9.201:3000';
   String _debugInfo = '';
 
   @override

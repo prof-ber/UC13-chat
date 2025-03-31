@@ -16,3 +16,18 @@ CREATE TABLE users_pictures (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (picture_id) REFERENCES pictures(id) ON DELETE CASCADE
 );
+
+CREATE TABLE messages (
+    id CHAR(36) PRIMARY KEY,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users_messages (
+    user_id VARCHAR(128),
+    message_id CHAR(36),
+    is_sender BOOLEAN NOT NULL,
+    PRIMARY KEY (user_id, message_id, is_sender),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);

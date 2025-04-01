@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+final SERVER_IP = "172.17.9.224";
+
 class ProfilePicture extends StatefulWidget {
   final String userId;
 
@@ -15,14 +17,13 @@ class ProfilePicture extends StatefulWidget {
 
 class _ProfilePictureState extends State<ProfilePicture> {
   Uint8List? _imageData;
-  final String baseUrl = 'http://172.17.9.201:3000';
+  final String baseUrl = 'http://$SERVER_IP:3000';
   String _debugInfo = '';
 
   @override
   void initState() {
     super.initState();
     _loadProfilePicture();
-    _testConnection();
   }
 
   Future<void> _loadProfilePicture() async {
@@ -151,17 +152,6 @@ class _ProfilePictureState extends State<ProfilePicture> {
       );
     } finally {
       client.close();
-    }
-  }
-
-  Future<void> _testConnection() async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/api/test'));
-      _setDebugInfo(
-        'Test connection status: ${response.statusCode}, Body: ${response.body}',
-      );
-    } catch (e) {
-      _setDebugInfo('Error testing connection: $e');
     }
   }
 

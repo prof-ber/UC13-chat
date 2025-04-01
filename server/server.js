@@ -13,9 +13,11 @@ const upload = multer({ storage: multer.memoryStorage() });
 dotenv.config();
 uuidv4(); // Gera um ID único para o usuário
 
+const SERVER_IP = process.env.SERVER_IP || "localhost";
+
 async function login(username, password) {
   try {
-    const response = await fetch("http://localhost:3000/api/login", {
+    const response = await fetch(`http://${SERVER_IP}:3000/api/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -339,6 +341,185 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
     res.end(imageBuffer);
   } catch (error) {
     console.error(`Error in profile picture route for user ${userId}:`, error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Fetch contacts route
+app.get("/api/contacts", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    const [rows] = await connection.execute(
+      `
+      SELECT u.id, u.username, up.picture_id
+      FROM contacts c
+      JOIN users u ON c.contact_id = u.id
+      LEFT JOIN users_pictures up ON u.id = up.user_id
+      WHERE c.user_id = ?
+    `,
+      [userId]
+    );
+
+    const contacts = rows.map((row) => ({
+      id: row.id,
+      username: row.username,
+      avatarUrl: row.picture_id ? `/api/profile-picture/${row.id}` : null,
+    }));
+
+    res.status(200).json(contacts);
+  } catch (error) {
+    console.error("Error fetching contacts:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Add contact route
+app.post("/api/contacts", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  const { contactId } = req.body;
+
+  if (!contactId) {
+    return res.status(400).json({ error: "Contact ID is required" });
+  }
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Check if the contact exists
+    const [userRows] = await connection.execute(
+      "SELECT id FROM users WHERE id = ?",
+      [contactId]
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: "Contact not found" });
+    }
+
+    // Check if the contact is already added
+    const [existingRows] = await connection.execute(
+      "SELECT * FROM contacts WHERE user_id = ? AND contact_id = ?",
+      [userId, contactId]
+    );
+    if (existingRows.length > 0) {
+      return res.status(400).json({ error: "Contact already added" });
+    }
+
+    // Add the contact
+    await connection.execute(
+      "INSERT INTO contacts (user_id, contact_id) VALUES (?, ?)",
+      [userId, contactId]
+    );
+
+    res.status(201).json({ message: "Contact added successfully" });
+  } catch (error) {
+    console.error("Error adding contact:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Fetch user information route
+app.get("/api/users/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    jwt.verify(token, process.env.JWT_SECRET);
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    const [rows] = await connection.execute(
+      `
+      SELECT u.id, u.username, up.picture_id
+      FROM users u
+      LEFT JOIN users_pictures up ON u.id = up.user_id
+      WHERE u.id = ?
+    `,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = {
+      id: rows[0].id,
+      username: rows[0].username,
+      avatarUrl: rows[0].picture_id
+        ? `/api/profile-picture/${rows[0].id}`
+        : null,
+    };
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("Error fetching user information:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });

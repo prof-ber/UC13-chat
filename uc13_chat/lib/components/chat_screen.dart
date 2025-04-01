@@ -3,9 +3,19 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
 import '../entities/message_entity.dart';
+import 'contacts.dart';
+
+final SERVER_IP = "172.17.9.224";
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final Contact contact;
+  final User currentUser;
+
+  const ChatScreen({
+    super.key,
+    required this.contact,
+    required this.currentUser,
+  });
 
   @override
   ChatScreenState createState() => ChatScreenState();
@@ -21,7 +31,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // Registrar o observer
+    WidgetsBinding.instance.addObserver(this);
     _connectToSocketIO();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -33,7 +43,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _connectToSocketIO() {
-    socket = IO.io('http://172.17.9.201:3000', <String, dynamic>{
+    socket = IO.io('http://$SERVER_IP:3000', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
     });
@@ -73,7 +83,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final message = Message(
         name: 'You',
         text: _controller.text,
-        to: 'All',
+        to: widget.contact.id,
         timestamp: DateTime.now(),
       );
       socket.emit('message', message.toJson());
@@ -82,14 +92,13 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
       _controller.clear();
 
-      // Mantém o foco no campo após enviar
       _messageFocusNode.requestFocus();
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // Remover o observer
+    WidgetsBinding.instance.removeObserver(this);
     _messageFocusNode.dispose();
     _controller.dispose();
     socket.disconnect();
@@ -98,51 +107,47 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeMetrics() {
-    // Isso é chamado quando o teclado aparece ou desaparece
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
     if (bottomInset > 0) {
-      // Teclado está visível - garantir que o campo está focado
       _messageFocusNode.requestFocus();
     }
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1e1e1e), // Fundo principal
+      appBar: AppBar(
+        title: Text(widget.contact.name),
+        backgroundColor: const Color(0xFF252526),
+      ),
+      backgroundColor: const Color(0xFF1e1e1e),
       body: Column(
         children: [
-          // Barra de status da conexão
           Container(
             padding: const EdgeInsets.all(8.0),
-            color: const Color(0xFF252526), // Fundo secundário
+            color: const Color(0xFF252526),
             child: Text(
               connectionStatus,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFFd4d4d4), // Texto cinza claro
+                color: Color(0xFFd4d4d4),
               ),
             ),
           ),
-
-          // Lista de mensagens
           Expanded(
             child: Container(
-              color: const Color(0xFF1e1e1e), // Fundo principal
+              color: const Color(0xFF1e1e1e),
               child: ListMessageView(messages: messages),
             ),
           ),
-
-          // Campo de texto e botões
           Container(
             padding: const EdgeInsets.all(8.0),
             color: const Color(0xFF252526),
             child: Column(
               children: [
                 TextField(
-                  focusNode: _messageFocusNode, // <-- Conecte o FocusNode aqui
+                  focusNode: _messageFocusNode,
                   controller: _controller,
                   decoration: InputDecoration(
                     border: const OutlineInputBorder(),

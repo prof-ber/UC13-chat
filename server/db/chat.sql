@@ -25,3 +25,18 @@ CREATE TABLE contacts (
   FOREIGN KEY (contact_id) REFERENCES users(id),
   UNIQUE KEY unique_contact (user_id, contact_id)
 );
+
+CREATE TABLE messages (
+    id CHAR(36) PRIMARY KEY,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users_messages (
+    user_id VARCHAR(128),
+    message_id CHAR(36),
+    is_sender BOOLEAN NOT NULL,
+    PRIMARY KEY (user_id, message_id, is_sender),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);

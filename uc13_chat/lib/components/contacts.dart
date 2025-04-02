@@ -5,7 +5,7 @@ import 'chat_screen.dart';
 import '../services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final SERVER_IP = '172.17.9.224';
+final SERVER_IP = '172.17.9.220';
 
 class User {
   final String id;

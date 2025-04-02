@@ -15,33 +15,6 @@ uuidv4(); // Gera um ID único para o usuário
 
 const SERVER_IP = process.env.SERVER_IP || "localhost";
 
-async function login(username, password) {
-  try {
-    const response = await fetch(`http://${SERVER_IP}:3000/api/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        nome: username,
-        senha: password,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Login efetuado com sucesso!");
-      return data;
-    } else {
-      const errorData = await response.json();
-      console.error("Falha ao efetuar login:", errorData.message);
-      throw new Error(errorData.message);
-    }
-  } catch (error) {
-    console.error("Erro ao fazer login:", error);
-    throw error;
-  }
-}
 const app = express();
 const server = http.createServer(app);
 const io = new socketIo(server, {
@@ -272,13 +245,6 @@ async function getMessages(userId) {
     await connection.end();
   }
 }
-
-// Profile picture upload route
-app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
-  // ... (resto do código da rota de upload de foto de perfil)
-});
-
-// ... (resto do código)
 
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
@@ -613,11 +579,12 @@ io.on("connection", (socket) => {
 
   socket.on('message', async (msg) => {
     console.log("Mensagem recebida:", msg);
-
+  
     if (msg.text && msg.text.length > 50000) {
       socket.emit("message_error", "Mensagem excede o limite de 50.000 caracteres");
-        console.log(`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
-    return;     }
+      console.log(`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
+      return;
+    }
   
     if (!socket.userId) {
       console.error("Erro: userId não definido");
@@ -636,13 +603,14 @@ io.on("connection", (socket) => {
       timestamp: timestamp
     };
   
+    // Enviar a mensagem apenas para os outros clientes
     socket.broadcast.emit('message', messageWithSender);
   
-    // Enviar a mensagem de volta para o remetente
-    socket.emit('message', {
-      ...messageWithSender,
-      is_sender: true
-    });
+    // Removido: Não enviar a mensagem de volta para o remetente
+    // socket.emit('message', {
+    //   ...messageWithSender,
+    //   is_sender: true
+    // });
   });
 });
 

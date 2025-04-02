@@ -4,7 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-final SERVER_IP = "172.17.9.224";
+final SERVER_IP = "172.17.9.220";
 
 class ProfilePicture extends StatefulWidget {
   final String userId;

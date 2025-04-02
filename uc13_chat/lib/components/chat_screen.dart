@@ -6,7 +6,7 @@ import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
 
-final SERVER_IP = "172.17.9.224";
+final SERVER_IP = "172.17.9.220";
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -59,7 +59,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    socket = IO.io('http://localhost:3000', <String, dynamic>{
+    socket = IO.io('http://$SERVER_IP:3000', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': token},
@@ -231,7 +231,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           // Campo de texto e botões
           Container(
             padding: const EdgeInsets.all(8.0),
-            color: const Color(0xFF252526),
+            color: const Color.fromARGB(255, 37, 38, 37),
             child: Column(
               children: [
                 TextField(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-final SERVER_IP = "172.17.9.224";
+final SERVER_IP = "172.17.9.220";
 
 class LoginScreen extends StatefulWidget {
   @override

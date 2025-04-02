@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'chat_screen.dart';
 import 'signup.dart';
 import 'profile_picture.dart';
+import 'contacts.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -57,11 +58,21 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             if (isLoggedIn && userId != null) ProfilePicture(userId: userId!),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                if (isLoggedIn) {
-                  _logout();
-                } else {
+            if (isLoggedIn) ...[
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => ContactsScreen()),
+                  );
+                },
+                child: const Text('Contatos'),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(onPressed: _logout, child: const Text('Logout')),
+            ] else ...[
+              ElevatedButton(
+                onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -69,34 +80,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           (context) => LoginScreen(setLoggedIn: setLoggedIn),
                     ),
                   );
-                }
-              },
-              child: Text(isLoggedIn ? 'Logout' : 'Login'),
-            ),
-            const SizedBox(height: 20),
-            if (isLoggedIn)
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ChatScreen()),
-                  );
                 },
-                child: const Text('Entrar no Chat'),
+                child: const Text('Login'),
               ),
-            const SizedBox(height: 20),
-            if (!isLoggedIn)
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => CadastroScreen(), // Removed const
-                    ),
+                    MaterialPageRoute(builder: (context) => CadastroScreen()),
                   );
                 },
                 child: const Text('Cadastrar'),
               ),
+            ],
           ],
         ),
       ),

@@ -147,9 +147,11 @@ class AuthService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      print('Logout successful');
+      print('SharedPreferences cleared');
+      // Add any additional logout logic here, such as API calls to invalidate the token on the server
     } catch (e) {
-      print('Error during logout: $e');
+      print('Error during logout in AuthService: $e');
+      throw e; // Re-throw the error so it can be caught in the UI
     }
   }
 

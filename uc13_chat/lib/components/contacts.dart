@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'chat_screen.dart';
 import '../services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'login_screen.dart';
 
 final SERVER_IP = '172.17.9.224';
 
@@ -185,51 +187,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  void _showUserName() {
-    if (currentUser != null) {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text('Your Profile'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Name: ${currentUser!.name}',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 10),
-                if (currentUser!.avatarUrl != null)
-                  ClipOval(
-                    child: Image.network(
-                      currentUser!.avatarUrl!,
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-              ],
-            ),
-            actions: <Widget>[
-              TextButton(
-                child: Text('Close'),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('No user logged in')));
-    }
-  }
-
   void _startConversation(Contact contact) {
     if (currentUser != null) {
       Navigator.push(
@@ -244,6 +201,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please log in to start a conversation')),
       );
+    }
+  }
+
+  void _copyUserId() {
+    if (currentUser != null) {
+      Clipboard.setData(ClipboardData(text: currentUser!.id));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('User ID copied to clipboard')));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No user ID available')));
     }
   }
 
@@ -324,8 +294,33 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _logout() async {
-    await AuthService.logout();
-    Navigator.of(context).pushReplacementNamed('/login');
+    try {
+      print('Logging out...');
+      await AuthService.logout();
+      print('Logout successful, navigating to login screen');
+
+      // Navigate back to the login screen
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder:
+              (context) => LoginScreen(
+                setLoggedIn: (bool loggedIn, String? userId) {
+                  if (loggedIn) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (context) => ContactsScreen()),
+                    );
+                  }
+                },
+              ),
+        ),
+        (Route<dynamic> route) => false,
+      );
+    } catch (e) {
+      print('Error during logout: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error logging out: $e')));
+    }
   }
 
   @override
@@ -376,11 +371,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             icon: Icon(Icons.more_vert, color: Colors.black),
             onSelected: (String result) {
               switch (result) {
-                case 'show_name':
-                  _showUserName();
-                  break;
-                case 'refresh_contacts':
-                  _fetchContacts();
+                case 'copy_user_id':
+                  _copyUserId();
                   break;
                 case 'logout':
                   _logout();
@@ -390,8 +382,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             itemBuilder:
                 (BuildContext context) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'refresh_contacts',
-                    child: Text('Refresh Contacts'),
+                    value: 'copy_user_id',
+                    child: Text('Copy User ID'),
                   ),
                   PopupMenuItem<String>(value: 'logout', child: Text('Logout')),
                 ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'contacts.dart';
 
 final SERVER_IP = "172.17.9.224";
 
@@ -53,8 +54,10 @@ class _LoginScreenState extends State<LoginScreen> {
             const SnackBar(content: Text('Login realizado com sucesso!')),
           );
 
-          // Navigate back to HomeScreen
-          Navigator.of(context).popUntil((route) => route.isFirst);
+          // Navigate to ContactsScreen
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => ContactsScreen()),
+          );
         } else {
           print('Login failed. Status code: ${response.statusCode}');
           print('Response body: ${response.body}');

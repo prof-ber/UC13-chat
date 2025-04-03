@@ -3,33 +3,41 @@ class Message {
   final String text;
   final String to;
   final DateTime timestamp;
+  final String? fileUrl;
+  final double? width;
+  final double? height;
 
   Message({
     required this.name,
     required this.text,
     required this.to,
     required this.timestamp,
+    this.fileUrl,
+    this.width,
+    this.height,
   });
-
-  factory Message.fromJson(Map<String, dynamic> json) {
-    return Message(
-      name: json['from'] ?? 'Unknown',
-      text: json['text'] ?? '',
-      to: json['to'] ?? 'All',
-      timestamp: json['timestamp'] != null
-          ? (json['timestamp'] is int
-              ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'])
-              : DateTime.parse(json['timestamp']))
-          : DateTime.now(),
-    );
-  }
 
   Map<String, dynamic> toJson() {
     return {
-      'from': name,
+      'name': name,
       'text': text,
       'to': to,
       'timestamp': timestamp.toIso8601String(),
+      'fileUrl': fileUrl,
+      'width': width,
+      'height': height,
     };
+  }
+
+  factory Message.fromJson(Map<String, dynamic> json) {
+    return Message(
+      name: json['name'],
+      text: json['text'],
+      to: json['to'],
+      timestamp: DateTime.parse(json['timestamp']),
+      fileUrl: json['fileUrl'],
+      width: json['width'],
+      height: json['height'],
+    );
   }
 }

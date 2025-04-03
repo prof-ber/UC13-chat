@@ -25,3 +25,14 @@ CREATE TABLE contacts (
   FOREIGN KEY (contact_id) REFERENCES users(id),
   UNIQUE KEY unique_contact (user_id, contact_id)
 );
+
+CREATE TABLE IF NOT EXISTS files (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100) NOT NULL,
+  size INT NOT NULL,
+  user_id VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

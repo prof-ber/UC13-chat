@@ -9,7 +9,54 @@ import verifyPassword from "./lib/verify.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import multer from "multer";
-const upload = multer({ storage: multer.memoryStorage() });
+import path from "path";
+import fs from "fs/promises";
+
+// Ensure upload directory exists
+const uploadDir = path.join(process.cwd(), "uploads");
+await fs.mkdir(uploadDir, { recursive: true });
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // Make sure this directory exists
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  console.log("Received file:", file);
+  console.log("File mimetype:", file.mimetype);
+  console.log("File original name:", file.originalname);
+
+  // Expanded list of accepted mimetypes
+  const acceptedMimeTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "video/mp4",
+    "video/quicktime",
+    "application/octet-stream", // For unknown binary data
+  ];
+
+  if (acceptedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    console.log(`Rejected file: ${file.originalname} (${file.mimetype})`);
+    cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB file size limit
+  },
+});
+
 dotenv.config();
 uuidv4(); // Gera um ID único para o usuário
 
@@ -64,6 +111,7 @@ app.use(express.json());
 app.use(express.json({ limit: "15MB" }));
 app.use(express.urlencoded({ limit: "15MB", extended: true }));
 app.use(cors());
+app.use("/uploads", express.static("uploads"));
 
 app.options("*", cors(corsOptions)); // Enable pre-flight requests for all routes
 
@@ -530,6 +578,86 @@ app.get("/api/users/:userId", async (req, res) => {
   }
 });
 
+// Envio de fotos e vídeos (acesso a galeria)
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  console.log("Upload route hit");
+  console.log("Request file:", req.file);
+  console.log("Request body:", req.body);
+  console.log("Request headers:", req.headers);
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  let connection;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+
+    const fileInfo = {
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      userId: userId,
+    };
+
+    // Determine file type
+    const fileType = fileInfo.mimetype.startsWith("image/") ? "image" : "video";
+
+    // Save fileInfo to your database
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    const [result] = await connection.execute(
+      "INSERT INTO files (filename, original_name, mimetype, size, user_id, file_type) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        fileInfo.filename,
+        fileInfo.originalName,
+        fileInfo.mimetype,
+        fileInfo.size,
+        fileInfo.userId,
+        fileType,
+      ]
+    );
+
+    const fileUrl = `/uploads/${fileInfo.filename}`;
+
+    res.status(200).json({
+      message: "Arquivo enviado com sucesso",
+      file: {
+        ...fileInfo,
+        id: result.insertId,
+        url: fileUrl,
+        type: fileType,
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao enviar o arquivo:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
 // Lógica do Socket.io
 io.on("connection", (socket) => {
   console.log("Novo cliente conectado");

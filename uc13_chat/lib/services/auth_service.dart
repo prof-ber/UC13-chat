@@ -3,7 +3,7 @@ import '../components/contacts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-const String SERVER_IP = '172.17.9.224';
+const String SERVER_IP = '172.17.9.220';
 
 class AuthService {
   static Future<User?> getCurrentUser() async {

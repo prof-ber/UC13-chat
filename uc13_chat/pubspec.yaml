@@ -4,7 +4,8 @@ publish_to: "none"
 version: 0.1.0
 
 environment:
-  sdk: ^3.7.0
+  sdk: ">=3.7.0 <4.0.0"
+  flutter: ">=3.0.0"
 
 dependencies:
   flutter:
@@ -30,9 +31,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/default_avatar.png
+
   fonts:
     - family: RobotoMono
       fonts:
-        - asset: assets\fonts\static\RobotoMono-Regular.ttf
-        - asset: assets\fonts\static\RobotoMono-Bold.ttf
+        - asset: assets/fonts/static/RobotoMono-Regular.ttf
+        - asset: assets/fonts/static/RobotoMono-Bold.ttf
           weight: 700

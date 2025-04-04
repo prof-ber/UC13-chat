@@ -62,33 +62,6 @@ uuidv4(); // Gera um ID único para o usuário
 
 const SERVER_IP = process.env.SERVER_IP || "localhost";
 
-async function login(username, password) {
-  try {
-    const response = await fetch(`http://${SERVER_IP}:3000/api/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        nome: username,
-        senha: password,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Login efetuado com sucesso!");
-      return data;
-    } else {
-      const errorData = await response.json();
-      console.error("Falha ao efetuar login:", errorData.message);
-      throw new Error(errorData.message);
-    }
-  } catch (error) {
-    console.error("Erro ao fazer login:", error);
-    throw error;
-  }
-}
 const app = express();
 const server = http.createServer(app);
 const io = new socketIo(server, {
@@ -269,6 +242,57 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Função para salvar mensagem no banco de dados
+async function saveMessage(senderId, receiverId, content) {
+  const connection = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+  });
+
+  try {
+    const [result] = await connection.execute(
+      'INSERT INTO messages (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)',
+      [uuidv4(), senderId, receiverId === 'All' ? null : receiverId, content]
+    );
+    console.log('Message saved to database');
+  } catch (error) {
+    console.error('Error saving message to database:', error);
+  } finally {
+    await connection.end();
+  }
+}
+
+// Função para recuperar mensagens do banco de dados
+async function getMessages(userId) {
+  const connection = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+  });
+
+  try {
+    const [rows] = await connection.execute(
+      `SELECT m.id, m.content, m.timestamp, um.is_sender, 
+              CASE WHEN um.is_sender = 1 THEN um.user_id ELSE other_um.user_id END as other_user_id
+       FROM messages m
+       JOIN users_messages um ON m.id = um.message_id
+       JOIN users_messages other_um ON m.id = other_um.message_id AND other_um.user_id != um.user_id
+       WHERE um.user_id = ?
+       ORDER BY m.timestamp ASC`,
+      [userId]
+    );
+    return rows;
+  } catch (error) {
+    console.error('Error retrieving messages from database:', error);
+    return [];
+  } finally {
+    await connection.end();
+  }
+}
 
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
@@ -662,24 +686,59 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 io.on("connection", (socket) => {
   console.log("Novo cliente conectado");
 
+  socket.on("authenticate", async (token) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.userId;
+      socket.userId = userId;
+
+      // Enviar mensagens antigas para o usuário
+      const oldMessages = await getMessages(userId);
+      socket.emit("old_messages", oldMessages);
+    } catch (error) {
+      console.error("Authentication error:", error);
+      socket.disconnect();
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Cliente desconectado");
   });
 
-  socket.on("message", (msg) => {
+  socket.on('message', async (msg) => {
     console.log("Mensagem recebida:", msg);
-
-    // Adiciona o remetente (nome do cliente) à mensagem
+  
+    if (msg.text && msg.text.length > 50000) {
+      socket.emit("message_error", "Mensagem excede o limite de 50.000 caracteres");
+      console.log(`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
+      return;
+    }
+  
+    if (!socket.userId) {
+      console.error("Erro: userId não definido");
+      return;
+    }
+  
+    const timestamp = new Date().toISOString();
+  
+    // Salvar a mensagem no banco de dados
+    await saveMessage(socket.userId, msg.to, msg.content);
+  
     const messageWithSender = {
-      ...msg, // Mantém os campos originais (text e to)
-      from: socket.id, // Ou um nome de usuário, se disponível
+      is_sender: false,
+      content: msg.content,
+      other_user_id: socket.userId,
+      timestamp: timestamp
     };
-
-    // Emite a mensagem para todos os clientes, exceto o remetente
-    socket.broadcast.emit("message", messageWithSender);
-
-    // Removemos a linha que emitia a mensagem de volta para o remetente
-    // socket.emit("message", messageWithSender);
+  
+    // Enviar a mensagem apenas para os outros clientes
+    socket.broadcast.emit('message', messageWithSender);
+  
+    // Removido: Não enviar a mensagem de volta para o remetente
+    // socket.emit('message', {
+    //   ...messageWithSender,
+    //   is_sender: true
+    // });
   });
 });
 

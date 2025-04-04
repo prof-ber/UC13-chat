@@ -101,9 +101,9 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           messages.clear(); // Limpa as mensagens existentes
           messages.addAll((data as List).map((m) {
             return Message(
-              name: m['is_sender'] ? 'You' : 'Other',
+              name: m['is_sender'] == 1 ? 'You' : 'Other',
               text: m['content'],
-              to: m['is_sender'] ? m['other_user_id'] : 'You',
+              to: m['is_sender'] == 1 ? m['other_user_id'] : 'You',
               timestamp: DateTime.parse(m['timestamp']),
             );
           }));

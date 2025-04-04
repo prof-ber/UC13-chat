@@ -70,7 +70,6 @@ async function createSessionsTable() {
       )
     `);
 
-    console.log("Sessions table created or already exists");
     connection.end();
   } catch (error) {
     console.error("Error creating sessions table:", error);
@@ -98,7 +97,6 @@ app.post("/api/cadastro", cors(corsOptions), async (req, res) => {
 
     const hashedPassword = await hashPassword(senha);
     const userId = uuidv4();
-    console.log(userId);
 
     const [result] = await connection.execute(
       "INSERT INTO users (id, username, senha) VALUES (?, ?, ?)",
@@ -111,8 +109,6 @@ app.post("/api/cadastro", cors(corsOptions), async (req, res) => {
       id: userId,
       nome: nome,
     };
-
-    console.log("Novo usuário cadastrado:", novoUsuario);
 
     res.status(201).json({
       message: "Usuário cadastrado com sucesso",
@@ -161,7 +157,6 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
       connection.end();
       return res.status(401).json({ error: "Senha incorreta" });
     }
-    console.log("Generating JWT token...");
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
       expiresIn: "24h",
     });
@@ -170,7 +165,6 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
     const sessionId = uuidv4();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    console.log("Creating new session...");
     await connection.execute(
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)",
       [sessionId, user.id, token, expiresAt]
@@ -205,12 +199,33 @@ async function saveMessage(senderId, receiverId, content) {
   });
 
   try {
-    const [result] = await connection.execute(
-      'INSERT INTO messages (id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)',
-      [uuidv4(), senderId, receiverId === 'All' ? null : receiverId, content]
+    await connection.beginTransaction();
+
+    // Inserir a mensagem
+    const messageId = uuidv4();
+    await connection.execute(
+      'INSERT INTO messages (id, content) VALUES (?, ?)',
+      [messageId, content]
     );
+
+    // Associar a mensagem ao remetente
+    await connection.execute(
+      'INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)',
+      [senderId, messageId, true]
+    );
+
+    // Associar a mensagem ao destinatário (se não for 'All')
+    if (receiverId !== 'All') {
+      await connection.execute(
+        'INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)',
+        [receiverId, messageId, false]
+      );
+    }
+
+    await connection.commit();
     console.log('Message saved to database');
   } catch (error) {
+    await connection.rollback();
     console.error('Error saving message to database:', error);
   } finally {
     await connection.end();
@@ -248,7 +263,6 @@ async function getMessages(userId) {
 
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
-  console.log("PUT request received for profile picture");
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ error: "Token não fornecido" });
@@ -263,6 +277,14 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "Foto de perfil é obrigatória" });
     }
+
+    
+  if (!req.file.mimetype.startsWith('image/')) {
+    return res.status(400).json({ error: "O arquivo enviado não é uma imagem válida" });
+  }
+
+  console.log("Received image size:", req.file.size);
+  console.log("Received image data length:", req.file.buffer.length);
 
     console.log("Received image data length:", req.file.buffer.length);
 
@@ -313,6 +335,7 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
     }
   } catch (error) {
     console.error("Erro ao atualizar a foto de perfil:", error);
+    console.error("Stack trace:", error.stack);
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ error: "Token inválido" });
     }
@@ -351,15 +374,15 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
     const imageBuffer = rows[0].pictures_data;
 
     if (!imageBuffer) {
-      console.log(`Invalid profile picture data for user: ${userId}`);
       return res
         .status(200)
         .json({ message: "Profile picture data is invalid" });
     }
-
-    console.log(`Sending profile picture for user: ${userId}`);
+  
+    console.log("Image content type:", imageBuffer.type);
+  
     res.writeHead(200, {
-      "Content-Type": "image/jpeg",
+      "Content-Type": "image/jpeg", // Ajuste isso se necessário com base no tipo real da imagem
       "Content-Length": imageBuffer.length,
     });
     res.end(imageBuffer);
@@ -578,7 +601,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on('message', async (msg) => {
-    console.log("Mensagem recebida:", msg);
   
     if (msg.text && msg.text.length > 50000) {
       socket.emit("message_error", "Mensagem excede o limite de 50.000 caracteres");

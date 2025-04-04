@@ -1,67 +1,159 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:mobx/mobx.dart';
+import 'list_message.dart';
 import '../entities/message_entity.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
-import '../services/gallery.dart';
 
-final SERVER_IP = "172.17.9.224";
+final SERVER_IP = "172.17.9.220";
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
   final User currentUser;
 
-  const ChatScreen({Key? key, required this.contact, required this.currentUser})
-    : super(key: key);
+  const ChatScreen({
+    super.key,
+    required this.contact,
+    required this.currentUser,
+  });
 
   @override
   ChatScreenState createState() => ChatScreenState();
 }
 
 class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
+  ImageProvider? _avatarImage;
   final TextEditingController _controller = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   late IO.Socket socket;
   String connectionStatus = 'Disconnected';
   final ObservableList<Message> messages = ObservableList<Message>();
-  bool _isUploading = false;
+
+  bool _isMounted = false;
 
   @override
   void initState() {
     super.initState();
+    _avatarImage = NetworkImage('https://example.com/avatar.jpg');
+    _isMounted = true;
     WidgetsBinding.instance.addObserver(this);
     _connectToSocketIO();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _messageFocusNode.requestFocus(),
-    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_messageFocusNode.hasFocus) {
+        _messageFocusNode.unfocus();
+      }
+      _messageFocusNode.requestFocus();
+    });
   }
 
-  void _connectToSocketIO() {
+  void _connectToSocketIO() async {
+    // Obter o token de autenticação
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    if (token == null) {
+      print('Token não encontrado. O usuário precisa fazer login.');
+      // Aqui você pode adicionar lógica para redirecionar o usuário para a tela de login
+      return;
+    }
+
     socket = IO.io('http://$SERVER_IP:3000', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
+      'auth': {'token': token},
     });
 
     socket.connect();
 
     socket.onConnect((_) {
-      setState(() => connectionStatus = 'Connected');
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = 'Connected';
+        });
+      }
       print('Connection established');
+      socket.emit('authenticate', token);
     });
 
     socket.onDisconnect((_) {
-      setState(() => connectionStatus = 'Disconnected');
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = 'Disconnected';
+        });
+      }
       print('Connection Disconnected');
     });
 
     socket.onConnectError((err) {
-      setState(() => connectionStatus = 'Connection Error: $err');
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = 'Connection Error: $err';
+        });
+      }
       print('Connect Error: $err');
     });
 
-    socket.on('message', (data) {
-      setState(() => messages.add(Message.fromJson(data)));
+    socket.on('old_messages', (data) {
+      if (_isMounted) {
+        setState(() {
+          messages.clear(); // Limpa as mensagens existentes
+          messages.addAll((data as List).map((m) {
+            return Message(
+              name: m['is_sender'] ? 'You' : 'Other',
+              text: m['content'],
+              to: m['is_sender'] ? m['other_user_id'] : 'You',
+              timestamp: DateTime.parse(m['timestamp']),
+            );
+          }));
+        });
+      }
     });
+
+    socket.on('message', (data) {
+      if (_isMounted) {
+        setState(() {
+          messages.add(Message(
+            name: data['is_sender'] ? 'You' : 'Other',
+            text: data['content'],
+            to: data['is_sender'] ? data['other_user_id'] : 'You',
+            timestamp: DateTime.parse(data['timestamp']),
+          ));
+        });
+        _controller.clear();
+
+        // Mantém o foco no campo após enviar
+        _messageFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _isMounted = false;
+    WidgetsBinding.instance.removeObserver(this); // Remover o observer
+    _messageFocusNode.dispose();
+    _controller.dispose();
+    
+    // Desconectar e limpar o socket
+    socket.disconnect();
+    socket.close();
+    socket.destroy();
+    
+    // Limpar a lista de mensagens
+    messages.clear();
+    
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!_isMounted) return;  // Adicione esta linha
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
+    if (bottomInset > 0) {
+      _messageFocusNode.requestFocus();
+    }
   }
 
   void _sendMessage() {
@@ -72,190 +164,102 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         to: widget.contact.id,
         timestamp: DateTime.now(),
       );
-
-      socket.emit('message', message.toJson());
+      socket.emit('message', {
+        'content': message.text,
+        'to': message.to,
+        'timestamp': message.timestamp.toIso8601String(),
+      });
       setState(() {
         messages.add(message);
-        _controller.clear();
       });
-      _messageFocusNode.requestFocus();
+      _controller.clear();
     }
-  }
-
-  Future<void> _uploadFile() async {
-    setState(() => _isUploading = true);
-
-    try {
-      final result = await FileService.uploadFile(context);
-      if (result != null) {
-        final message = Message(
-          name: 'You',
-          text: '',
-          to: widget.contact.id,
-          timestamp: DateTime.now(),
-          fileUrl: result['url'],
-          width: result['width'],
-          height: result['height'],
-        );
-
-        socket.emit('message', message.toJson());
-        setState(() {
-          messages.add(message);
-        });
-        print('File uploaded and sent successfully: ${result['url']}');
-      } else {
-        throw Exception('File upload failed: No URL returned');
-      }
-    } catch (e) {
-      print('File upload error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to upload file: $e'),
-          duration: Duration(seconds: 5),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _messageFocusNode.dispose();
-    _controller.dispose();
-    socket.disconnect();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.contact.name),
-        backgroundColor: const Color(0xFF252526),
-      ),
       backgroundColor: const Color(0xFF1e1e1e),
-      body: SafeArea(
-        child: Column(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1F2C34),
+        leadingWidth: 100,
+        leading: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              color: const Color(0xFF252526),
-              child: Text(
-                connectionStatus,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFd4d4d4),
-                ),
-              ),
+            IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
             ),
-            Expanded(child: ListMessageView(messages: messages)),
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              color: const Color(0xFF252526),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      focusNode: _messageFocusNode,
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        border: const OutlineInputBorder(),
-                        labelText: 'Enter message',
-                        labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
-                      ),
-                      style: const TextStyle(color: Color(0xFFd4d4d4)),
-                      onSubmitted: (_) => _sendMessage(),
-                      textInputAction: TextInputAction.send,
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(
-                      _isUploading ? Icons.hourglass_empty : Icons.attach_file,
-                      color: Color(0xFFd4d4d4),
-                    ),
-                    onPressed: _isUploading ? null : _uploadFile,
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
-                    onPressed: _sendMessage,
-                  ),
-                ],
-              ),
+            CircleAvatar(
+              backgroundImage: _avatarImage,
+              onBackgroundImageError: (exception, stackTrace) {
+                if (mounted) {
+                  setState(() {
+                    _avatarImage = AssetImage('assets/default_avatar.png');
+                  });
+                }
+              },
+              radius: 18,
             ),
           ],
         ),
+        title: Text(widget.contact.name),
       ),
-    );
-  }
-}
-
-class ListMessageView extends StatelessWidget {
-  final List<Message> messages;
-
-  const ListMessageView({Key? key, required this.messages}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF1e1e1e),
-      child: ListView.builder(
-        reverse: true,
-        itemCount: messages.length,
-        itemBuilder: (context, index) {
-          final message = messages[messages.length - 1 - index];
-          return _buildMessageItem(message);
-        },
-      ),
-    );
-  }
-
-  Widget _buildMessageItem(Message message) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-      child: Column(
-        crossAxisAlignment:
-            message.name.toLowerCase() == 'you'
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
+      body: Column(
         children: [
+          // Barra de status da conexão
           Container(
-            decoration: BoxDecoration(
-              color:
-                  message.name.toLowerCase() == 'you'
-                      ? Color(0xFF00bcd4)
-                      : Color(0xFF6a0dad),
-              borderRadius: BorderRadius.circular(8),
+            padding: const EdgeInsets.all(8.0),
+            color: const Color(0xFF252526), // Fundo secundário
+            child: Text(
+              connectionStatus,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFd4d4d4), // Texto cinza claro
+              ),
             ),
-            padding: EdgeInsets.all(8),
+          ),
+
+          // Lista de mensagens
+          Expanded(
+            child: Container(
+              color: const Color(0xFF1e1e1e), // Fundo principal
+              child: ListMessageView(messages: messages),
+            ),
+          ),
+
+          // Campo de texto e botões
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            color: const Color.fromARGB(255, 37, 38, 37),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                TextField(
+                  focusNode: _messageFocusNode,
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    labelText: 'Enter message',
+                    labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
                   ),
+                  style: const TextStyle(color: Color(0xFFd4d4d4)),
+                  onSubmitted: (_) => _sendMessage(),
+                  textInputAction: TextInputAction.send,
                 ),
-                if (message.text.isNotEmpty)
-                  Text(message.text, style: TextStyle(color: Colors.white)),
-                if (message.fileUrl != null)
-                  Container(
-                    constraints: BoxConstraints(maxWidth: 200, maxHeight: 200),
-                    child: _buildMessageImage(
-                      message.fileUrl,
-                      message.width,
-                      message.height,
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed:
+                          connectionStatus == 'Connected' ? _sendMessage : null,
+                      child: const Text('Send Message'),
                     ),
-                  ),
-                SizedBox(height: 4),
-                Text(
-                  _formatTime(message.timestamp),
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ElevatedButton(
+                      onPressed: _connectToSocketIO,
+                      child: const Text('Reconnect'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -263,32 +267,5 @@ class ListMessageView extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Widget _buildMessageImage(String? imageUrl, double? width, double? height) {
-    if (imageUrl == null) {
-      return SizedBox.shrink();
-    }
-
-    final fullImageUrl =
-        imageUrl.startsWith('http')
-            ? imageUrl
-            : 'http://$SERVER_IP:3000$imageUrl';
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        fullImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          print("Error loading image: $error");
-          return Icon(Icons.error);
-        },
-      ),
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
   }
 }

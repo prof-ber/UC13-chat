@@ -37,6 +37,7 @@ app.use(express.json());
 app.use(express.json({ limit: "15MB" }));
 app.use(express.urlencoded({ limit: "15MB", extended: true }));
 app.use(cors());
+app.use("/uploads", express.static("uploads"));
 
 app.options("*", cors(corsOptions)); // Enable pre-flight requests for all routes
 
@@ -204,29 +205,29 @@ async function saveMessage(senderId, receiverId, content) {
     // Inserir a mensagem
     const messageId = uuidv4();
     await connection.execute(
-      'INSERT INTO messages (id, content) VALUES (?, ?)',
+      "INSERT INTO messages (id, content) VALUES (?, ?)",
       [messageId, content]
     );
 
     // Associar a mensagem ao remetente
     await connection.execute(
-      'INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)',
+      "INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)",
       [senderId, messageId, true]
     );
 
     // Associar a mensagem ao destinatário (se não for 'All')
-    if (receiverId !== 'All') {
+    if (receiverId !== "All") {
       await connection.execute(
-        'INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)',
+        "INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)",
         [receiverId, messageId, false]
       );
     }
 
     await connection.commit();
-    console.log('Message saved to database');
+    console.log("Message saved to database");
   } catch (error) {
     await connection.rollback();
-    console.error('Error saving message to database:', error);
+    console.error("Error saving message to database:", error);
   } finally {
     await connection.end();
   }
@@ -254,7 +255,7 @@ async function getMessages(userId) {
     );
     return rows;
   } catch (error) {
-    console.error('Error retrieving messages from database:', error);
+    console.error("Error retrieving messages from database:", error);
     return [];
   } finally {
     await connection.end();
@@ -264,7 +265,7 @@ async function getMessages(userId) {
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
   console.log("Iniciando rota de upload de imagem de perfil");
-  
+
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     console.log("Token não fornecido");
@@ -286,10 +287,12 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
 
     console.log("Tipo MIME do arquivo:", req.file.mimetype);
     console.log("Tamanho do arquivo:", req.file.size);
-    
-    if (!req.file.mimetype.startsWith('image/')) {
+
+    if (!req.file.mimetype.startsWith("image/")) {
       console.log("Arquivo não é uma imagem válida");
-      return res.status(400).json({ error: "O arquivo enviado não é uma imagem válida" });
+      return res
+        .status(400)
+        .json({ error: "O arquivo enviado não é uma imagem válida" });
     }
 
     console.log("Received image size:", req.file.size);
@@ -392,9 +395,9 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
         .status(200)
         .json({ message: "Profile picture data is invalid" });
     }
-  
+
     console.log("Image content type:", imageBuffer.type);
-  
+
     res.writeHead(200, {
       "Content-Type": "image/jpeg", // Ajuste isso se necessário com base no tipo real da imagem
       "Content-Length": imageBuffer.length,
@@ -614,34 +617,38 @@ io.on("connection", (socket) => {
     console.log("Cliente desconectado");
   });
 
-  socket.on('message', async (msg) => {
-  
+  socket.on("message", async (msg) => {
     if (msg.text && msg.text.length > 50000) {
-      socket.emit("message_error", "Mensagem excede o limite de 50.000 caracteres");
-      console.log(`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
+      socket.emit(
+        "message_error",
+        "Mensagem excede o limite de 50.000 caracteres"
+      );
+      console.log(
+        `Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`
+      );
       return;
     }
-  
+
     if (!socket.userId) {
       console.error("Erro: userId não definido");
       return;
     }
-  
+
     const timestamp = new Date().toISOString();
-  
+
     // Salvar a mensagem no banco de dados
     await saveMessage(socket.userId, msg.to, msg.content);
-  
+
     const messageWithSender = {
       is_sender: false,
       content: msg.content,
       other_user_id: socket.userId,
-      timestamp: timestamp
+      timestamp: timestamp,
     };
-  
+
     // Enviar a mensagem apenas para os outros clientes
-    socket.broadcast.emit('message', messageWithSender);
-  
+    socket.broadcast.emit("message", messageWithSender);
+
     // Removido: Não enviar a mensagem de volta para o remetente
     // socket.emit('message', {
     //   ...messageWithSender,

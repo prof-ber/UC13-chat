@@ -6,7 +6,7 @@ import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
 
-final SERVER_IP = "172.17.9.220";
+final SERVER_IP = "172.17.9.63";
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -32,14 +32,38 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   bool _isMounted = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _avatarImage = NetworkImage('https://example.com/avatar.jpg');
-    _isMounted = true;
-    WidgetsBinding.instance.addObserver(this);
-    _connectToSocketIO();
+  Future<void> _loadUserAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+  
+    if (userId != null) {
+      final avatarUrl = 'http://$SERVER_IP:3000/api/profile-picture/$userId';
+      setState(() {
+        _avatarImage = NetworkImage(avatarUrl);
+      });
+    } else {
+      setState(() {
+        _avatarImage = AssetImage('assets/default_avatar.png');
+      });
+    }
+  }
 
+@override
+void initState() {
+  super.initState();
+  _isMounted = true;
+  WidgetsBinding.instance.addObserver(this);
+  _loadUserAvatar();
+  _connectToSocketIO();
+  
+    _messageFocusNode.addListener(() {
+      if (_messageFocusNode.hasFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Scrollable.ensureVisible(context, alignment: 1.0);
+        });
+      }
+    });
+  
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_messageFocusNode.hasFocus) {
         _messageFocusNode.unfocus();
@@ -99,14 +123,22 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (_isMounted) {
         setState(() {
           messages.clear(); // Limpa as mensagens existentes
-          messages.addAll((data as List).map((m) {
-            return Message(
-              name: m['is_sender'] == 1 ? 'You' : 'Other',
-              text: m['content'],
-              to: m['is_sender'] == 1 ? m['other_user_id'] : 'You',
-              timestamp: DateTime.parse(m['timestamp']),
-            );
-          }));
+          if (data is List) {
+            try {
+              messages.addAll(data.map((m) {
+                return Message(
+                  name: m['is_sender'] == 1 ? 'You' : 'Other',
+                  text: m['content'] ?? '',
+                  to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
+                  timestamp: DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
+                );
+              }).toList());
+            } catch (e) {
+              print('Error processing old messages: $e');
+            }
+          } else {
+            print('Received data is not a List: $data');
+          }
         });
       }
     });
@@ -127,21 +159,26 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _messageFocusNode.requestFocus();
       }
     });
+
+      socket.on('avatar_updated', (data) {
+    if (_isMounted) {
+      _loadUserAvatar();
+    }
+  });
   }
 
   @override
   void dispose() {
     _isMounted = false;
-    WidgetsBinding.instance.removeObserver(this); // Remover o observer
+    WidgetsBinding.instance.removeObserver(this);
+    _messageFocusNode.removeListener(() {}); // Adicione esta linha
     _messageFocusNode.dispose();
     _controller.dispose();
     
-    // Desconectar e limpar o socket
     socket.disconnect();
     socket.close();
     socket.destroy();
     
-    // Limpar a lista de mensagens
     messages.clear();
     
     super.dispose();
@@ -173,6 +210,11 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         messages.add(message);
       });
       _controller.clear();
+      
+      // Adicione estas linhas para garantir que o foco retorne ao campo de entrada
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _messageFocusNode.requestFocus();
+      });
     }
   }
 

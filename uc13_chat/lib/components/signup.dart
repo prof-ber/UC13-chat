@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-final SERVER_IP = "172.17.9.220";
+final SERVER_IP = "172.17.9.63";
 
 class CadastroScreen extends StatefulWidget {
   @override

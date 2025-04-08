@@ -1,13 +1,15 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uc13_chat/appconstants.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  static const String baseUrl = 'http://172.17.9.220:3000/api'; // Substitua pelo IP do seu servidor
+  static const String baseUrl =
+      'http://${AppConstants.SERVER_IP}:3000/api'; // Substitua pelo IP do seu servidor
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,7 +26,10 @@ class ApiService {
 
   Future<dynamic> get(String endpoint) async {
     final headers = await getHeaders();
-    final response = await http.get(Uri.parse('$baseUrl$endpoint'), headers: headers);
+    final response = await http.get(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: headers,
+    );
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -44,7 +49,7 @@ class ApiService {
     if (files != null) {
       request.files.addAll(files);
     }
-  
+
     var streamedResponse = await request.send();
     return await http.Response.fromStream(streamedResponse);
   }

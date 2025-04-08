@@ -5,8 +5,7 @@ import 'list_message.dart';
 import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
-
-final SERVER_IP = "172.17.9.63";
+import 'package:uc13_chat/appconstants.dart';
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -35,9 +34,10 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadUserAvatar() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
-  
+
     if (userId != null) {
-      final avatarUrl = 'http://$SERVER_IP:3000/api/profile-picture/$userId';
+      final avatarUrl =
+          'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/$userId';
       setState(() {
         _avatarImage = NetworkImage(avatarUrl);
       });
@@ -48,14 +48,14 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-@override
-void initState() {
-  super.initState();
-  _isMounted = true;
-  WidgetsBinding.instance.addObserver(this);
-  _loadUserAvatar();
-  _connectToSocketIO();
-  
+  @override
+  void initState() {
+    super.initState();
+    _isMounted = true;
+    WidgetsBinding.instance.addObserver(this);
+    _loadUserAvatar();
+    _connectToSocketIO();
+
     _messageFocusNode.addListener(() {
       if (_messageFocusNode.hasFocus) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -63,7 +63,7 @@ void initState() {
         });
       }
     });
-  
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_messageFocusNode.hasFocus) {
         _messageFocusNode.unfocus();
@@ -83,7 +83,7 @@ void initState() {
       return;
     }
 
-    socket = IO.io('http://$SERVER_IP:3000', <String, dynamic>{
+    socket = IO.io('http://${AppConstants.SERVER_IP}:3000', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': token},
@@ -125,14 +125,21 @@ void initState() {
           messages.clear(); // Limpa as mensagens existentes
           if (data is List) {
             try {
-              messages.addAll(data.map((m) {
-                return Message(
-                  name: m['is_sender'] == 1 ? 'You' : 'Other',
-                  text: m['content'] ?? '',
-                  to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
-                  timestamp: DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
-                );
-              }).toList());
+              messages.addAll(
+                data.map((m) {
+                  return Message(
+                    name: m['is_sender'] == 1 ? 'You' : 'Other',
+                    text: m['content'] ?? '',
+                    to:
+                        m['is_sender'] == 1
+                            ? (m['other_user_id'] ?? '')
+                            : 'You',
+                    timestamp:
+                        DateTime.tryParse(m['timestamp'] ?? '') ??
+                        DateTime.now(),
+                  );
+                }).toList(),
+              );
             } catch (e) {
               print('Error processing old messages: $e');
             }
@@ -146,12 +153,14 @@ void initState() {
     socket.on('message', (data) {
       if (_isMounted) {
         setState(() {
-          messages.add(Message(
-            name: data['is_sender'] ? 'You' : 'Other',
-            text: data['content'],
-            to: data['is_sender'] ? data['other_user_id'] : 'You',
-            timestamp: DateTime.parse(data['timestamp']),
-          ));
+          messages.add(
+            Message(
+              name: data['is_sender'] ? 'You' : 'Other',
+              text: data['content'],
+              to: data['is_sender'] ? data['other_user_id'] : 'You',
+              timestamp: DateTime.parse(data['timestamp']),
+            ),
+          );
         });
         _controller.clear();
 
@@ -160,11 +169,11 @@ void initState() {
       }
     });
 
-      socket.on('avatar_updated', (data) {
-    if (_isMounted) {
-      _loadUserAvatar();
-    }
-  });
+    socket.on('avatar_updated', (data) {
+      if (_isMounted) {
+        _loadUserAvatar();
+      }
+    });
   }
 
   @override
@@ -174,19 +183,19 @@ void initState() {
     _messageFocusNode.removeListener(() {}); // Adicione esta linha
     _messageFocusNode.dispose();
     _controller.dispose();
-    
+
     socket.disconnect();
     socket.close();
     socket.destroy();
-    
+
     messages.clear();
-    
+
     super.dispose();
   }
 
   @override
   void didChangeMetrics() {
-    if (!_isMounted) return;  // Adicione esta linha
+    if (!_isMounted) return; // Adicione esta linha
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
     if (bottomInset > 0) {
       _messageFocusNode.requestFocus();
@@ -210,7 +219,7 @@ void initState() {
         messages.add(message);
       });
       _controller.clear();
-      
+
       // Adicione estas linhas para garantir que o foco retorne ao campo de entrada
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _messageFocusNode.requestFocus();

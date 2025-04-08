@@ -3,8 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
-
-final SERVER_IP = "172.17.9.63";
+import 'package:uc13_chat/appconstants.dart';
 
 class LoginScreen extends StatefulWidget {
   final Function(bool, String?) setLoggedIn;
@@ -30,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         print('Sending login request with body: ${jsonEncode(body)}');
         final response = await http.post(
-          Uri.parse('http://$SERVER_IP:3000/api/login'),
+          Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/login'),
           headers: <String, String>{
             'Content-Type': 'application/json; charset=UTF-8',
           },

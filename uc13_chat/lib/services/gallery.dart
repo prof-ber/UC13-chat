@@ -12,8 +12,7 @@ import 'package:video_compress/video_compress.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 import 'dart:ui' as ui;
-
-final SERVER_IP = '172.17.9.224';
+import 'package:uc13_chat/appconstants.dart';
 
 class FileService {
   static const List<String> _videoExtensions = ['mp4', 'avi', 'mov'];
@@ -98,7 +97,7 @@ class FileService {
         throw Exception('No authentication token found');
       }
 
-      var uri = Uri.parse('http://$SERVER_IP:3000/api/upload');
+      var uri = Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/upload');
       var request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer $token';
 

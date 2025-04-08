@@ -6,8 +6,7 @@ import '../services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'login_screen.dart';
-
-final SERVER_IP = '172.17.9.63';
+import 'package:uc13_chat/appconstants.dart';
 
 class User {
   final String id;
@@ -85,7 +84,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         try {
           // Fetch the user's data from the server
           final response = await http.get(
-            Uri.parse('http://$SERVER_IP:3000/api/users/${user.id}'),
+            Uri.parse(
+              'http://${AppConstants.SERVER_IP}:3000/api/users/${user.id}',
+            ),
             headers: <String, String>{'Authorization': 'Bearer $token'},
           );
 
@@ -110,13 +111,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
           // Fetch profile picture
           final pictureResponse = await http.get(
-            Uri.parse('http://$SERVER_IP:3000/api/profile-picture/${user.id}'),
+            Uri.parse(
+              'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${user.id}',
+            ),
             headers: <String, String>{'Authorization': 'Bearer $token'},
           );
           if (pictureResponse.statusCode == 200) {
             setState(() {
               currentUser!.avatarUrl =
-                  'http://$SERVER_IP:3000/api/profile-picture/${user.id}';
+                  'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${user.id}';
             });
           }
         } catch (e) {
@@ -139,7 +142,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final headers = await AuthService.getAuthHeaders();
       final response = await http.get(
-        Uri.parse('http://$SERVER_IP:3000/api/contacts'),
+        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/contacts'),
         headers: headers,
       );
 
@@ -240,7 +243,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 try {
                   final headers = await AuthService.getAuthHeaders();
                   final response = await http.post(
-                    Uri.parse('http://$SERVER_IP:3000/api/contacts'),
+                    Uri.parse(
+                      'http://${AppConstants.SERVER_IP}:3000/api/contacts',
+                    ),
                     headers: headers,
                     body: json.encode({'contactId': _controller.text}),
                   );
@@ -249,7 +254,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     // Fetch the user's name after adding the contact
                     final userResponse = await http.get(
                       Uri.parse(
-                        'http://$SERVER_IP:3000/api/users/${_controller.text}',
+                        'http://${AppConstants.SERVER_IP}:3000/api/users/${_controller.text}',
                       ),
                       headers: headers,
                     );
@@ -410,7 +415,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             backgroundImage:
                                 contact.avatarUrl != null
                                     ? NetworkImage(
-                                      'http://$SERVER_IP:3000/api/profile-picture/${contact.id}',
+                                      'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${contact.id}',
                                     )
                                     : null,
                             child:

@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http_parser/http_parser.dart';
 
-final SERVER_IP = "172.17.9.220";
+final SERVER_IP = "172.17.9.63";
 
 class ProfilePicture extends StatefulWidget {
   final String userId;
@@ -27,6 +28,7 @@ class _ProfilePictureState extends State<ProfilePicture> {
   }
 
   Future<void> _loadProfilePicture() async {
+    _setDebugInfo(''); // Clear previous debug info
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -88,10 +90,12 @@ class _ProfilePictureState extends State<ProfilePicture> {
   }
 
   Future<void> _sendProfilePictureToServer(XFile image) async {
+    _setDebugInfo(''); // Clear previous debug info
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
-
+  
     if (token == null) {
+      print('Token não encontrado');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -101,11 +105,13 @@ class _ProfilePictureState extends State<ProfilePicture> {
       );
       return;
     }
-
+  
     var client = http.Client();
     try {
       final bytes = await image.readAsBytes();
-
+      print('Tamanho da imagem em bytes: ${bytes.length}');
+      print('Tipo MIME da imagem: ${image.mimeType}');
+  
       var request = http.MultipartRequest(
         'PUT',
         Uri.parse('$baseUrl/api/profile-picture'),
@@ -116,17 +122,17 @@ class _ProfilePictureState extends State<ProfilePicture> {
           'image',
           bytes,
           filename: 'profile_picture.jpg',
+          contentType: MediaType.parse(image.mimeType ?? 'image/jpeg'),
         ),
       );
-
+  
+      print('Enviando requisição...');
       _setDebugInfo('Sending profile picture...');
-      var streamedResponse = await client
-          .send(request)
-          .timeout(Duration(seconds: 30));
+      var streamedResponse = await client.send(request).timeout(Duration(seconds: 30));
       _setDebugInfo('Response received: ${streamedResponse.statusCode}');
       var response = await http.Response.fromStream(streamedResponse);
       _setDebugInfo('Response body: ${response.body}');
-
+  
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -138,12 +144,13 @@ class _ProfilePictureState extends State<ProfilePicture> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro ao atualizar a foto de perfil: ${response.statusCode}',
+              'Erro ao atualizar a foto de perfil: ${response.statusCode}\nBody: ${response.body}',
             ),
           ),
         );
       }
     } catch (e) {
+      print('Erro ao enviar a imagem: $e');
       _setDebugInfo('Error sending profile picture: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -158,7 +165,7 @@ class _ProfilePictureState extends State<ProfilePicture> {
   void _setDebugInfo(String info) {
     print(info); // Print to console
     setState(() {
-      _debugInfo = info; // Update state to show in UI
+      _debugInfo += '\n$info'; // Append new info instead of replacing
     });
   }
 
@@ -194,7 +201,6 @@ class _ProfilePictureState extends State<ProfilePicture> {
           ),
         ),
         SizedBox(height: 10),
-        Text(_debugInfo, style: TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }

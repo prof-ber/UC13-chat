@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../services/app_state.dart';
 import 'login_screen.dart';
 import 'chat_screen.dart';
 import 'signup.dart';
@@ -14,31 +16,31 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool isLoggedIn = false;
-  String? userId;
-
   @override
   void initState() {
     super.initState();
-    _checkLoginStatus();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    final appState = Provider.of<AppState>(context, listen: false);
+    if (!appState.initialDataLoaded) {
+      await _checkLoginStatus();
+      appState.setInitialDataLoaded(true);
+    }
   }
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final storedUserId = prefs.getString('userId');
     if (storedUserId != null) {
-      setState(() {
-        isLoggedIn = true;
-        userId = storedUserId;
-      });
+      setLoggedIn(true, storedUserId);
     }
   }
 
   void setLoggedIn(bool value, String? newUserId) {
-    setState(() {
-      isLoggedIn = value;
-      userId = newUserId;
-    });
+    final appState = Provider.of<AppState>(context, listen: false);
+    appState.setLoggedIn(value, newUserId);
   }
 
   Future<void> _logout() async {
@@ -50,15 +52,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppState>(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Chat App')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (isLoggedIn && userId != null) ProfilePicture(userId: userId!),
+            if (appState.isLoggedIn && appState.userId != null)
+              ProfilePicture(userId: appState.userId!),
             const SizedBox(height: 20),
-            if (isLoggedIn) ...[
+            if (appState.isLoggedIn) ...[
               ElevatedButton(
                 onPressed: () {
                   Navigator.push(
@@ -76,8 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder:
-                          (context) => LoginScreen(setLoggedIn: setLoggedIn),
+                      builder: (context) => LoginScreen(setLoggedIn: setLoggedIn),
                     ),
                   );
                 },

@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'login_screen.dart';
 
-final SERVER_IP = '172.17.9.220';
+final SERVER_IP = '172.17.9.63';
 
 class User {
   final String id;

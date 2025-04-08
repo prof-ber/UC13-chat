@@ -124,7 +124,6 @@ async function createSessionsTable() {
       )
     `);
 
-    console.log("Sessions table created or already exists");
     connection.end();
   } catch (error) {
     console.error("Error creating sessions table:", error);
@@ -152,7 +151,6 @@ app.post("/api/cadastro", cors(corsOptions), async (req, res) => {
 
     const hashedPassword = await hashPassword(senha);
     const userId = uuidv4();
-    console.log(userId);
 
     const [result] = await connection.execute(
       "INSERT INTO users (id, username, senha) VALUES (?, ?, ?)",
@@ -165,8 +163,6 @@ app.post("/api/cadastro", cors(corsOptions), async (req, res) => {
       id: userId,
       nome: nome,
     };
-
-    console.log("Novo usuário cadastrado:", novoUsuario);
 
     res.status(201).json({
       message: "Usuário cadastrado com sucesso",
@@ -215,7 +211,6 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
       connection.end();
       return res.status(401).json({ error: "Senha incorreta" });
     }
-    console.log("Generating JWT token...");
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
       expiresIn: "24h",
     });
@@ -224,7 +219,6 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
     const sessionId = uuidv4();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    console.log("Creating new session...");
     await connection.execute(
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)",
       [sessionId, user.id, token, expiresAt]
@@ -758,22 +752,38 @@ app.get("/api/files/:fileId", async (req, res) => {
 
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
-  console.log("PUT request received for profile picture");
+  console.log("Iniciando rota de upload de imagem de perfil");
+
   const authHeader = req.headers.authorization;
   if (!authHeader) {
+    console.log("Token não fornecido");
     return res.status(401).json({ error: "Token não fornecido" });
   }
 
   const token = authHeader.split(" ")[1];
 
   try {
+    console.log("Verificando token");
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
+    console.log("UserId do token:", userId);
 
     if (!req.file) {
+      console.log("Nenhum arquivo enviado");
       return res.status(400).json({ error: "Foto de perfil é obrigatória" });
     }
 
+    console.log("Tipo MIME do arquivo:", req.file.mimetype);
+    console.log("Tamanho do arquivo:", req.file.size);
+
+    if (!req.file.mimetype.startsWith("image/")) {
+      console.log("Arquivo não é uma imagem válida");
+      return res
+        .status(400)
+        .json({ error: "O arquivo enviado não é uma imagem válida" });
+    }
+
+    console.log("Received image size:", req.file.size);
     console.log("Received image data length:", req.file.buffer.length);
 
     const connection = await mysql.createConnection({
@@ -786,23 +796,28 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
     await connection.beginTransaction();
 
     try {
+      console.log("Inserindo imagem no banco de dados");
       const [pictureResult] = await connection.execute(
         "INSERT INTO pictures (pictures_data) VALUES (?)",
         [req.file.buffer]
       );
       const pictureId = pictureResult.insertId;
+      console.log("ID da imagem inserida:", pictureId);
 
+      console.log("Verificando se o usuário já tem uma imagem de perfil");
       const [existingPicture] = await connection.execute(
         "SELECT picture_id FROM users_pictures WHERE user_id = ?",
         [userId]
       );
 
       if (existingPicture.length > 0) {
+        console.log("Atualizando imagem de perfil existente");
         await connection.execute(
           "UPDATE users_pictures SET picture_id = ? WHERE user_id = ?",
           [pictureId, userId]
         );
       } else {
+        console.log("Inserindo nova imagem de perfil");
         await connection.execute(
           "INSERT INTO users_pictures (user_id, picture_id) VALUES (?, ?)",
           [userId, pictureId]
@@ -810,12 +825,14 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
       }
 
       await connection.commit();
+      console.log("Transação concluída com sucesso");
 
       res.status(200).json({
         message: "Foto de perfil atualizada com sucesso",
         imageUrl: `/api/profile-picture/${userId}`,
       });
     } catch (error) {
+      console.error("Erro durante a transação:", error);
       await connection.rollback();
       throw error;
     } finally {
@@ -823,6 +840,7 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
     }
   } catch (error) {
     console.error("Erro ao atualizar a foto de perfil:", error);
+    console.error("Stack trace:", error.stack);
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ error: "Token inválido" });
     }
@@ -861,15 +879,15 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
     const imageBuffer = rows[0].pictures_data;
 
     if (!imageBuffer) {
-      console.log(`Invalid profile picture data for user: ${userId}`);
       return res
         .status(200)
         .json({ message: "Profile picture data is invalid" });
     }
 
-    console.log(`Sending profile picture for user: ${userId}`);
+    console.log("Image content type:", imageBuffer.type);
+
     res.writeHead(200, {
-      "Content-Type": "image/jpeg",
+      "Content-Type": "image/jpeg", // Ajuste isso se necessário com base no tipo real da imagem
       "Content-Length": imageBuffer.length,
     });
     res.end(imageBuffer);

@@ -31,6 +31,7 @@ CREATE TABLE messages (
     content TEXT NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE messages MODIFY COLUMN content TEXT;
 
 CREATE TABLE users_messages (
     user_id VARCHAR(128),
@@ -48,6 +49,10 @@ CREATE TABLE IF NOT EXISTS files (
   mimetype VARCHAR(100) NOT NULL,
   size INT NOT NULL,
   user_id VARCHAR(128) NOT NULL,
+  file_type ENUM('image', 'video') NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+ALTER TABLE files
+ADD COLUMN width INT,
+ADD COLUMN height INT;

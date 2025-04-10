@@ -15,6 +15,21 @@ uuidv4(); // Gera um ID único para o usuário
 
 const SERVER_IP = process.env.SERVER_IP || "localhost";
 
+const LOG_LEVELS = {
+  ERROR: 0,
+  WARN: 1,
+  INFO: 2,
+  DEBUG: 3
+};
+
+const CURRENT_LOG_LEVEL = LOG_LEVELS.INFO; // Ajuste conforme necessário
+
+function log(level, message) {
+  if (level <= CURRENT_LOG_LEVEL) {
+    console.log(`[${new Date().toISOString()}] ${Object.keys(LOG_LEVELS)[level]}: ${message}`);
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = new socketIo(server, {
@@ -32,6 +47,27 @@ const corsOptions = {
   credentials: true,
 };
 
+const onlineUsers = new Map();
+const lastActivityTime = new Map();
+
+function updateUserActivity(userId) {
+  lastActivityTime.set(userId, Date.now());
+  onlineUsers.set(userId, true);
+}
+
+function checkUserStatus() {
+  const currentTime = Date.now();
+  for (const [userId, lastActivity] of lastActivityTime.entries()) {
+    if (currentTime - lastActivity > 5 * 60 * 1000) { // 5 minutos de inatividade
+      onlineUsers.delete(userId);
+      io.emit('userStatusChanged', { userId, isOnline: false });
+    }
+  }
+}
+
+// Executar a verificação a cada minuto
+setInterval(checkUserStatus, 60000);
+
 app.use(cors(corsOptions)); // Enable CORS for all routes
 app.use(express.json());
 app.use(express.json({ limit: "15MB" }));
@@ -43,7 +79,7 @@ app.options("*", cors(corsOptions)); // Enable pre-flight requests for all route
 // Log middleware to request sizes
 app.use((req, res, next) => {
   const contentLength = req.headers["content-length"];
-  console.log(
+  log(LOG_LEVELS.INFO,
     `Received ${req.method} request to ${req.url} with content length: ${contentLength} bytes`
   );
   next();
@@ -72,7 +108,7 @@ async function createSessionsTable() {
 
     connection.end();
   } catch (error) {
-    console.error("Error creating sessions table:", error);
+    log(LOG_LEVELS.ERROR,"Error creating sessions table:", $);
   }
 }
 
@@ -115,7 +151,8 @@ app.post("/api/cadastro", cors(corsOptions), async (req, res) => {
       usuario: novoUsuario,
     });
   } catch (error) {
-    console.error("Error during registration:", error);
+    
+    
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -160,7 +197,7 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
       expiresIn: "24h",
     });
-    console.log("JWT token generated successfully");
+    log(LOG_LEVELS.INFO,"JWT token generated successfully");
 
     const sessionId = uuidv4();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -169,11 +206,11 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)",
       [sessionId, user.id, token, expiresAt]
     );
-    console.log("New session created successfully");
+    log(LOG_LEVELS.INFO,"New session created successfully");
 
     connection.end();
 
-    console.log("Login successful");
+    log(LOG_LEVELS.INFO,"Login successful");
     res.status(200).json({
       message: "Login realizado com sucesso",
       usuario: {
@@ -184,13 +221,17 @@ app.post("/api/login", cors(corsOptions), async (req, res) => {
       sessionId: sessionId,
     });
   } catch (error) {
-    console.error("Error during login:", error);
+    log(LOG_LEVELS.ERROR,"Error during login:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
+let savedMessagesCount = 0;
+let lastLogTime = Date.now();
+
 // Função para salvar mensagem no banco de dados
 async function saveMessage(senderId, receiverId, content) {
+  savedMessagesCount++;
   const connection = await mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -221,12 +262,15 @@ async function saveMessage(senderId, receiverId, content) {
         [receiverId, messageId, false]
       );
     }
-
-    await connection.commit();
-    console.log('Message saved to database');
+    const now = Date.now();
+    if (now - lastLogTime > 60000) { // Log a cada minuto
+      log(LOG_LEVELS.INFO,`Mensagens salvas nos últimos 60 segundos: ${savedMessagesCount}`);
+      savedMessagesCount = 0;
+      lastLogTime = now;
+    }
   } catch (error) {
     await connection.rollback();
-    console.error('Error saving message to database:', error);
+    log(LOG_LEVELS.ERROR,'Error saving message to database:', error);
   } finally {
     await connection.end();
   }
@@ -254,7 +298,7 @@ async function getMessages(userId) {
     );
     return rows;
   } catch (error) {
-    console.error('Error retrieving messages from database:', error);
+    log(LOG_LEVELS.ERROR,'Error retrieving messages from database:', error);
     return [];
   } finally {
     await connection.end();
@@ -263,37 +307,37 @@ async function getMessages(userId) {
 
 // Profile picture upload route
 app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
-  console.log("Iniciando rota de upload de imagem de perfil");
+  log(LOG_LEVELS.INFO,"Iniciando rota de upload de imagem de perfil");
   
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    console.log("Token não fornecido");
+    log(LOG_LEVELS.INFO,"Token não fornecido");
     return res.status(401).json({ error: "Token não fornecido" });
   }
 
   const token = authHeader.split(" ")[1];
 
   try {
-    console.log("Verificando token");
+    log(LOG_LEVELS.INFO,"Verificando token");
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
-    console.log("UserId do token:", userId);
+    log(LOG_LEVELS.INFO,"UserId do token:", userId);
 
     if (!req.file) {
-      console.log("Nenhum arquivo enviado");
+      log(LOG_LEVELS.INFO,"Nenhum arquivo enviado");
       return res.status(400).json({ error: "Foto de perfil é obrigatória" });
     }
 
-    console.log("Tipo MIME do arquivo:", req.file.mimetype);
-    console.log("Tamanho do arquivo:", req.file.size);
+    log(LOG_LEVELS.INFO,"Tipo MIME do arquivo:", req.file.mimetype);
+    log(LOG_LEVELS.INFO,"Tamanho do arquivo:", req.file.size);
     
     if (!req.file.mimetype.startsWith('image/')) {
-      console.log("Arquivo não é uma imagem válida");
+      log(LOG_LEVELS.INFO,"Arquivo não é uma imagem válida");
       return res.status(400).json({ error: "O arquivo enviado não é uma imagem válida" });
     }
 
-    console.log("Received image size:", req.file.size);
-    console.log("Received image data length:", req.file.buffer.length);
+    log(LOG_LEVELS.INFO,"Received image size:", req.file.size);
+    log(LOG_LEVELS.INFO,"Received image data length:", req.file.buffer.length);
 
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
@@ -305,28 +349,28 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
     await connection.beginTransaction();
 
     try {
-      console.log("Inserindo imagem no banco de dados");
+      log(LOG_LEVELS.INFO,"Inserindo imagem no banco de dados");
       const [pictureResult] = await connection.execute(
         "INSERT INTO pictures (pictures_data) VALUES (?)",
         [req.file.buffer]
       );
       const pictureId = pictureResult.insertId;
-      console.log("ID da imagem inserida:", pictureId);
+      log(LOG_LEVELS.INFO,"ID da imagem inserida:", pictureId);
 
-      console.log("Verificando se o usuário já tem uma imagem de perfil");
+      log(LOG_LEVELS.INFO,"Verificando se o usuário já tem uma imagem de perfil");
       const [existingPicture] = await connection.execute(
         "SELECT picture_id FROM users_pictures WHERE user_id = ?",
         [userId]
       );
 
       if (existingPicture.length > 0) {
-        console.log("Atualizando imagem de perfil existente");
+        log(LOG_LEVELS.INFO,"Atualizando imagem de perfil existente");
         await connection.execute(
           "UPDATE users_pictures SET picture_id = ? WHERE user_id = ?",
           [pictureId, userId]
         );
       } else {
-        console.log("Inserindo nova imagem de perfil");
+        log(LOG_LEVELS.INFO,"Inserindo nova imagem de perfil");
         await connection.execute(
           "INSERT INTO users_pictures (user_id, picture_id) VALUES (?, ?)",
           [userId, pictureId]
@@ -334,21 +378,21 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
       }
 
       await connection.commit();
-      console.log("Transação concluída com sucesso");
+      log(LOG_LEVELS.INFO,"Transação concluída com sucesso");
 
       res.status(200).json({
         message: "Foto de perfil atualizada com sucesso",
         imageUrl: `/api/profile-picture/${userId}`,
       });
     } catch (error) {
-      console.error("Erro durante a transação:", error);
+      log(LOG_LEVELS.ERROR,"Erro durante a transação:", error);
       await connection.rollback();
       throw error;
     } finally {
       connection.end();
     }
   } catch (error) {
-    console.error("Erro ao atualizar a foto de perfil:", error);
+    log(LOG_LEVELS.ERROR,"Erro ao atualizar a foto de perfil:", error);
     console.error("Stack trace:", error.stack);
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ error: "Token inválido" });
@@ -359,10 +403,18 @@ app.put("/api/profile-picture", upload.single("image"), async (req, res) => {
   }
 });
 
+let profilePictureRequests = {};
 // Get profile picture route
 app.get("/api/profile-picture/:userId", async (req, res) => {
   const { userId } = req.params;
-  console.log(`Received request for profile picture of user: ${userId}`);
+
+  const now = Date.now();
+  if (!profilePictureRequests[userId] || now - profilePictureRequests[userId] > 300000) {
+    log(LOG_LEVELS.INFO,`Received request for profile picture of user: ${userId}`);
+    profilePictureRequests[userId] = now;
+  }
+
+  log(LOG_LEVELS.INFO,`Received request for profile picture of user: ${userId}`);
   let connection;
   try {
     const connection = await mysql.createConnection({
@@ -381,7 +433,7 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
     );
 
     if (rows.length === 0) {
-      console.log(`No profile picture found for user: ${userId}`);
+      log(LOG_LEVELS.INFO,`No profile picture found for user: ${userId}`);
       return res.status(200).json({ message: "No profile picture found" });
     }
 
@@ -393,7 +445,7 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
         .json({ message: "Profile picture data is invalid" });
     }
   
-    console.log("Image content type:", imageBuffer.type);
+    log(LOG_LEVELS.INFO,"Image content type:", imageBuffer.type);
   
     res.writeHead(200, {
       "Content-Type": "image/jpeg", // Ajuste isso se necessário com base no tipo real da imagem
@@ -452,7 +504,7 @@ app.get("/api/contacts", async (req, res) => {
 
     res.status(200).json(contacts);
   } catch (error) {
-    console.error("Error fetching contacts:", error);
+    log(LOG_LEVELS.ERROR,"Error fetching contacts:", error);
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ error: "Token inválido" });
     }
@@ -532,6 +584,8 @@ app.post("/api/contacts", async (req, res) => {
   }
 });
 
+
+
 // Fetch user information route
 app.get("/api/users/:userId", async (req, res) => {
   const { userId } = req.params;
@@ -577,7 +631,7 @@ app.get("/api/users/:userId", async (req, res) => {
 
     res.status(200).json(user);
   } catch (error) {
-    console.error("Error fetching user information:", error);
+    log(LOG_LEVELS.ERROR,"Error fetching user information:", error);
     if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ error: "Token inválido" });
     }
@@ -591,39 +645,76 @@ app.get("/api/users/:userId", async (req, res) => {
   }
 });
 
+function broadcastOnlineStatus() {
+  const onlineUsersList = Array.from(onlineUsers.keys());
+  io.emit('online_users', onlineUsersList);
+  
+  // Adicionando o console.log para informar os usuários online
+  console.log(`Usuários online: ${onlineUsersList.join(', ')}`);
+}
+
+// Enviar atualizações a cada 30 segundos
+setInterval(broadcastOnlineStatus, 30000);
+
+let connectedClients = 0;
 // Lógica do Socket.io
 io.on("connection", (socket) => {
-  console.log("Novo cliente conectado");
+  let userId;
+  connectedClients++;
+  log(LOG_LEVELS.INFO,`Novo cliente conectado. Total de clientes: ${connectedClients}`);
+
+  socket.on('login', (data) => {
+    userId = data.userId;
+    updateUserActivity(userId);
+    io.emit('userStatusChanged', { userId, isOnline: true });
+  });
 
   socket.on("authenticate", async (token) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const userId = decoded.userId;
+      userId = decoded.userId;
       socket.userId = userId;
 
-      // Enviar mensagens antigas para o usuário
+      onlineUsers.set(userId, socket.id);
+      updateUserActivity(userId);
+      
+      socket.broadcast.emit('userStatusChanged', { userId, isOnline: true });
+
       const oldMessages = await getMessages(userId);
       socket.emit("old_messages", oldMessages);
+
+      const onlineUsersList = Array.from(onlineUsers.keys());
+      socket.emit('online_users', onlineUsersList);
+
     } catch (error) {
-      console.error("Authentication error:", error);
+      log(LOG_LEVELS.ERROR, "Authentication error:", error);
       socket.disconnect();
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log("Cliente desconectado");
+  socket.on('disconnect', () => {
+    if (userId) {
+      onlineUsers.delete(userId);
+      io.emit('userStatusChanged', { userId, isOnline: false });
+    }
+  });
+
+  socket.on('updateActivity', () => {
+    if (userId) {
+      updateUserActivity(userId);
+    }
   });
 
   socket.on('message', async (msg) => {
   
     if (msg.text && msg.text.length > 50000) {
       socket.emit("message_error", "Mensagem excede o limite de 50.000 caracteres");
-      console.log(`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
+      log(LOG_LEVELS.INFO,`Mensagem bloqueada (tamanho: ${msg.text.length} caracteres)`);
       return;
     }
   
     if (!socket.userId) {
-      console.error("Erro: userId não definido");
+      log(LOG_LEVELS.ERROR,"Erro: userId não definido");
       return;
     }
   
@@ -641,13 +732,22 @@ io.on("connection", (socket) => {
   
     // Enviar a mensagem apenas para os outros clientes
     socket.broadcast.emit('message', messageWithSender);
-  
-    // Removido: Não enviar a mensagem de volta para o remetente
-    // socket.emit('message', {
-    //   ...messageWithSender,
-    //   is_sender: true
-    // });
   });
+});
+
+app.get("/api/user-status/:userId", (req, res) => {
+  const { userId } = req.params;
+  const isOnline = onlineUsers.has(userId) && (Date.now() - lastActivityTime.get(userId) <= 60000);
+  res.json({ userId, isOnline });
+});
+
+app.post("/api/bulk-user-status", async (req, res) => {
+  const { userIds } = req.body;
+  const statuses = {};
+  userIds.forEach(userId => {
+    statuses[userId] = onlineUsers.has(userId);
+  });
+  res.json(statuses);
 });
 
 // Catch-all route for undefined routes
@@ -656,7 +756,7 @@ app.use((req, res, next) => {
     error: "Not Found",
     message: `The requested resource ${req.url} was not found on this server.`,
   });
-  console.log(`404 Not Found: ${req.method} ${req.url}`);
+  log(LOG_LEVELS.INFO,`404 Not Found: ${req.method} ${req.url}`);
 });
 
 server.listen(PORT, "0.0.0.0", () => {

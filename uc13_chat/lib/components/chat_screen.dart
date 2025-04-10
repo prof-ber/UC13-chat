@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
 import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
+import 'dart:async';
+import '../services/socket_service.dart';
+import '../services/app_state.dart';
+import 'package:provider/provider.dart';
+import '../services/user_status_service.dart';
+
 
 final SERVER_IP = "172.17.9.63";
 
@@ -26,7 +31,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   ImageProvider? _avatarImage;
   final TextEditingController _controller = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
-  late IO.Socket socket;
+  late final SocketService _socketService;
   String connectionStatus = 'Disconnected';
   final ObservableList<Message> messages = ObservableList<Message>();
 
@@ -48,22 +53,87 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+ Future<void> _initializeSocketService() async {
+  await _socketService.initSocket();
+
+  _socketService.on('connect', (_) {
+    if (_isMounted) {
+      setState(() {
+        connectionStatus = _socketService.connectionStatus;
+      });
+    }
+    print('Connection established');
+  });
+
+  _socketService.on('userStatusChanged', (data) {
+    final userId = data['userId'];
+    final isOnline = data['isOnline'];
+    final appState = Provider.of<AppState>(context, listen: false);
+    appState.setUserStatus(userId, isOnline);
+    if (mounted) {
+      setState(() {
+        // Atualiza a UI se necessário
+      });
+    }
+  });
+  
+    _socketService.on('disconnect', (_) {
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = _socketService.connectionStatus;
+        });
+      }
+      print('Connection Disconnected');
+    });
+  
+    _socketService.on('connect_error', (err) {
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = _socketService.connectionStatus;
+        });
+      }
+      print('Connect Error: $err');
+    });
+  
+    _socketService.on('old_messages', _handleOldMessages);
+    _socketService.on('user_status', _handleUserStatus);
+    _socketService.on('message', _handleNewMessage);
+    _socketService.on('avatar_updated', _handleAvatarUpdated);
+  }
+
+  Timer? _statusCheckTimer;
+
+
 @override
 void initState() {
   super.initState();
+  
   _isMounted = true;
   WidgetsBinding.instance.addObserver(this);
-  _loadUserAvatar();
-  _connectToSocketIO();
   
-    _messageFocusNode.addListener(() {
-      if (_messageFocusNode.hasFocus) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Scrollable.ensureVisible(context, alignment: 1.0);
-        });
-      }
-    });
+  final appState = Provider.of<AppState>(context, listen: false);
+  _socketService = SocketService(appState);
   
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _loadUserAvatar();
+    _initializeSocketService();
+    _startStatusCheckTimer();
+    _updateAllUserStatuses();
+    
+    if (_messageFocusNode.hasFocus) {
+      _messageFocusNode.unfocus();
+    }
+    _messageFocusNode.requestFocus();
+  });
+
+  _messageFocusNode.addListener(() {
+    if (_messageFocusNode.hasFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Scrollable.ensureVisible(context, alignment: 1.0);
+      });
+    }
+  });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_messageFocusNode.hasFocus) {
         _messageFocusNode.unfocus();
@@ -72,117 +142,96 @@ void initState() {
     });
   }
 
-  void _connectToSocketIO() async {
-    // Obter o token de autenticação
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    if (token == null) {
-      print('Token não encontrado. O usuário precisa fazer login.');
-      // Aqui você pode adicionar lógica para redirecionar o usuário para a tela de login
-      return;
+    void _startStatusCheckTimer() {
+      _statusCheckTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+        if (_isMounted) {
+          _updateAllUserStatuses();
+        }
+      });
     }
-
-    socket = IO.io('http://$SERVER_IP:3000', <String, dynamic>{
-      'transports': ['websocket'],
-      'autoConnect': false,
-      'auth': {'token': token},
-    });
-
-    socket.connect();
-
-    socket.onConnect((_) {
-      if (_isMounted) {
-        setState(() {
-          connectionStatus = 'Connected';
-        });
-      }
-      print('Connection established');
-      socket.emit('authenticate', token);
-    });
-
-    socket.onDisconnect((_) {
-      if (_isMounted) {
-        setState(() {
-          connectionStatus = 'Disconnected';
-        });
-      }
-      print('Connection Disconnected');
-    });
-
-    socket.onConnectError((err) {
-      if (_isMounted) {
-        setState(() {
-          connectionStatus = 'Connection Error: $err';
-        });
-      }
-      print('Connect Error: $err');
-    });
-
-    socket.on('old_messages', (data) {
-      if (_isMounted) {
-        setState(() {
-          messages.clear(); // Limpa as mensagens existentes
-          if (data is List) {
-            try {
-              messages.addAll(data.map((m) {
-                return Message(
-                  name: m['is_sender'] == 1 ? 'You' : 'Other',
-                  text: m['content'] ?? '',
-                  to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
-                  timestamp: DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
-                );
-              }).toList());
-            } catch (e) {
-              print('Error processing old messages: $e');
-            }
-          } else {
-            print('Received data is not a List: $data');
-          }
-        });
-      }
-    });
-
-    socket.on('message', (data) {
-      if (_isMounted) {
-        setState(() {
-          messages.add(Message(
-            name: data['is_sender'] ? 'You' : 'Other',
-            text: data['content'],
-            to: data['is_sender'] ? data['other_user_id'] : 'You',
-            timestamp: DateTime.parse(data['timestamp']),
-          ));
-        });
-        _controller.clear();
-
-        // Mantém o foco no campo após enviar
-        _messageFocusNode.requestFocus();
-      }
-    });
-
-      socket.on('avatar_updated', (data) {
-    if (_isMounted) {
-      _loadUserAvatar();
-    }
-  });
-  }
 
   @override
   void dispose() {
+    _statusCheckTimer?.cancel();
     _isMounted = false;
     WidgetsBinding.instance.removeObserver(this);
-    _messageFocusNode.removeListener(() {}); // Adicione esta linha
+    _messageFocusNode.removeListener(() {});
     _messageFocusNode.dispose();
     _controller.dispose();
     
-    socket.disconnect();
-    socket.close();
-    socket.destroy();
+    _socketService.disconnect();
     
     messages.clear();
-    
     super.dispose();
   }
+
+  void _handleOldMessages(dynamic data) {
+  if (_isMounted) {
+    setState(() {
+      messages.clear(); // Limpa as mensagens existentes
+      if (data is List) {
+        try {
+          messages.addAll(data.map((m) {
+            return Message(
+              name: m['is_sender'] == 1 ? 'You' : 'Other',
+              text: m['content'] ?? '',
+              to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
+              timestamp: DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
+            );
+          }).toList());
+        } catch (e) {
+          print('Error processing old messages: $e');
+        }
+      } else {
+        print('Received data is not a List: $data');
+      }
+    });
+  }
+}
+
+void _updateAllUserStatuses() async {
+  final appState = Provider.of<AppState>(context, listen: false);
+  List<String> userIds = [widget.contact.id];
+  Map<String, bool> statuses = await UserStatusService.getBulkUserStatus(userIds);
+  statuses.forEach((userId, isOnline) {
+    appState.setUserStatus(userId, isOnline);
+  });
+  if (mounted) {
+    setState(() {
+      // Atualiza a UI se necessário
+    });
+  }
+}
+
+void _handleUserStatus(dynamic data) {
+  if (_isMounted && data['userId'] == widget.contact.id) {
+    final appState = Provider.of<AppState>(context, listen: false);
+    appState.setUserStatus(data['userId'], data['status'] == 'online');
+  }
+}
+
+void _handleNewMessage(dynamic data) {
+  if (_isMounted) {
+    setState(() {
+      messages.add(Message(
+        name: data['is_sender'] ? 'You' : 'Other',
+        text: data['content'],
+        to: data['is_sender'] ? data['other_user_id'] : 'You',
+        timestamp: DateTime.parse(data['timestamp']),
+      ));
+    });
+    _controller.clear();
+
+    // Mantém o foco no campo após enviar
+    _messageFocusNode.requestFocus();
+  }
+}
+
+void _handleAvatarUpdated(dynamic data) {
+  if (_isMounted) {
+    _loadUserAvatar();
+  }
+}
 
   @override
   void didChangeMetrics() {
@@ -201,7 +250,7 @@ void initState() {
         to: widget.contact.id,
         timestamp: DateTime.now(),
       );
-      socket.emit('message', {
+      _socketService.emit('message', {
         'content': message.text,
         'to': message.to,
         'timestamp': message.timestamp.toIso8601String(),
@@ -211,7 +260,6 @@ void initState() {
       });
       _controller.clear();
       
-      // Adicione estas linhas para garantir que o foco retorne ao campo de entrada
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _messageFocusNode.requestFocus();
       });
@@ -222,30 +270,48 @@ void initState() {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1e1e1e),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F2C34),
-        leadingWidth: 100,
-        leading: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            CircleAvatar(
-              backgroundImage: _avatarImage,
-              onBackgroundImageError: (exception, stackTrace) {
-                if (mounted) {
-                  setState(() {
-                    _avatarImage = AssetImage('assets/default_avatar.png');
-                  });
-                }
-              },
-              radius: 18,
-            ),
-          ],
-        ),
-        title: Text(widget.contact.name),
+ appBar: AppBar(
+      backgroundColor: const Color(0xFF1F2C34),
+      leadingWidth: 100,
+      leading: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          CircleAvatar(
+            backgroundImage: _avatarImage,
+            onBackgroundImageError: (exception, stackTrace) {
+              if (mounted) {
+                setState(() {
+                  _avatarImage = AssetImage('assets/default_avatar.png');
+                });
+              }
+            },
+            radius: 18,
+            child: _avatarImage == null ? Icon(Icons.person) : null,
+          ),
+        ],
       ),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.contact.name),
+          Consumer<AppState>(
+            builder: (context, appState, child) {
+              final isOnline = appState.isUserOnline(widget.contact.id);
+              return Text(
+                isOnline ? 'Online' : 'Offline',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isOnline ? Colors.green : Colors.grey,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    ),
       body: Column(
         children: [
           // Barra de status da conexão
@@ -293,12 +359,16 @@ void initState() {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton(
-                      onPressed:
-                          connectionStatus == 'Connected' ? _sendMessage : null,
-                      child: const Text('Send Message'),
+                      onPressed: _sendMessage,  // Adicione este botão
+                      child: const Text('Send'),
                     ),
                     ElevatedButton(
-                      onPressed: _connectToSocketIO,
+                      onPressed: () async {
+                        await _socketService.reconnect();
+                        setState(() {
+                          connectionStatus = _socketService.connectionStatus;
+                        });
+                      },
                       child: const Text('Reconnect'),
                     ),
                   ],

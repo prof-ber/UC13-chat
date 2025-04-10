@@ -235,9 +235,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder:
-              (context) =>
-                  ChatScreen(contact: contact, currentUser: currentUser!),
+          builder: (context) => ChatScreen(
+            contact: contact,
+            currentUser: currentUser!,
+          ),
         ),
       );
     } else {

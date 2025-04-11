@@ -248,8 +248,6 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       request.headers['Authorization'] = 'Bearer $token';
 
       String fileName = result.files.single.name;
-      String fileExtension = fileName.split('.').last.toLowerCase();
-      String fileType = fileExtension == 'mp4' ? 'video' : 'image';
 
       if (kIsWeb) {
         var bytes = result.files.single.bytes;
@@ -274,6 +272,23 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           context,
         ).showSnackBar(SnackBar(content: Text('File uploaded successfully')));
         var responseData = json.decode(response.body);
+        //Create a new Message with the uploaded file URL
+        Message uploadedMessage = Message(
+          name: 'You',
+          text: responseData['file']['url'],
+          to: widget.contact.id,
+          timestamp: DateTime.now(),
+          fileUrl: responseData['file']['url'],
+        );
+        setState(() {
+          messages.add(uploadedMessage);
+        });
+        //Send the message to the server
+        socket.emit('message', {
+          'content': uploadedMessage.text,
+          'to': uploadedMessage.to,
+          'timestamp': uploadedMessage.timestamp.toIso8601String(),
+        });
       } else {
         print('Failed to upload file. Status code: ${response.statusCode}');
         print('Response body: ${response.body}');

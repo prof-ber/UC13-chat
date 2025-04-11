@@ -285,19 +285,33 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             color: const Color.fromARGB(255, 37, 38, 37),
             child: Column(
               children: [
-                TextField(
-                  focusNode: _messageFocusNode,
-                  controller: _controller,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    labelText: 'Enter message',
-                    labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
-                  ),
-                  style: const TextStyle(color: Color(0xFFd4d4d4)),
-                  onSubmitted: (_) => _sendMessage(),
-                  textInputAction: TextInputAction.send,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        focusNode: _messageFocusNode,
+                        controller: _controller,
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
+                          labelText: 'Enter message',
+                          labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
+                        ),
+                        style: const TextStyle(color: Color(0xFFd4d4d4)),
+                        onSubmitted: (_) => _sendMessage(),
+                        textInputAction: TextInputAction.send,
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
+                      //TODO implementar a função de envio de arquivos
+                      onPressed: () => null,
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
+                      onPressed: _sendMessage,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [

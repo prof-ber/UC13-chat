@@ -56,3 +56,17 @@ CREATE TABLE IF NOT EXISTS files (
 ALTER TABLE files
 ADD COLUMN width INT,
 ADD COLUMN height INT;
+
+CREATE TABLE IF NOT EXISTS file_messages (
+  id CHAR(36) PRIMARY KEY,
+  message_id CHAR(36) NOT NULL,
+  file_id INT NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  file_type ENUM('image', 'video') NOT NULL,
+  file_size INT NOT NULL,
+  width INT,
+  height INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+);

@@ -9,11 +9,18 @@ import verifyPassword from "./lib/verify.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import path from "path";
+import sizeOf from "image-size";
+import { fileTypeFromBuffer } from "file-type";
+import { fileURLToPath } from "url";
+import fs from "fs";
+import { exec } from "child_process";
 const upload = multer({ storage: multer.memoryStorage() });
 dotenv.config();
 uuidv4(); // Gera um ID único para o usuário
 
 const SERVER_IP = process.env.SERVER_IP || "localhost";
+const baseUrl = process.env.SERVER_URL || "http://localhost:3000";
 
 const app = express();
 const server = http.createServer(app);
@@ -32,13 +39,55 @@ const corsOptions = {
   credentials: true,
 };
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Define uploadsPath here
+const uploadsPath = path.join(__dirname, "uploads");
+
 app.use(cors(corsOptions)); // Enable CORS for all routes
 app.use(express.json());
 app.use(express.json({ limit: "15MB" }));
 app.use(express.urlencoded({ limit: "15MB", extended: true }));
 app.use(cors());
-app.use("/uploads", express.static("uploads"));
 
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    const filePath = path.join(uploadsPath, req.url);
+    const filename = path.basename(req.url);
+    const imageUrl = `${baseUrl}/uploads/${encodeURIComponent(filename)}`;
+    fs.access(filePath, fs.constants.R_OK, (err) => {
+      if (err) {
+        console.error(`Error accessing file ${filePath}:`, err);
+        res.header("Access-Control-Allow-Origin", "*");
+        res.header(
+          "Access-Control-Allow-Headers",
+          "Origin, X-Requested-With, Content-Type, Accept"
+        );
+        return res.status(404).send("File not found");
+      }
+      next();
+    });
+  },
+  express.static(uploadsPath)
+);
+
+// Add this middleware after your static file serving setup
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    const filePath = path.join(uploadsPath, req.url);
+    fs.access(filePath, fs.constants.R_OK, (err) => {
+      if (err) {
+        console.error(`Error accessing file ${filePath}:`, err);
+        return res.status(404).send("File not found");
+      }
+      next();
+    });
+  },
+  express.static(uploadsPath)
+);
 app.options("*", cors(corsOptions)); // Enable pre-flight requests for all routes
 
 // Log middleware to request sizes
@@ -594,6 +643,312 @@ app.get("/api/users/:userId", async (req, res) => {
   }
 });
 
+// Envio de fotos e vídeos (acesso a galeria)
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  console.log("Upload route hit");
+  console.log("Request file:", req.file);
+  console.log("Request body:", req.body);
+  console.log("Request headers:", req.headers);
+
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  console.log("File MIME type:", req.file.mimetype);
+  console.log("File size:", req.file.size);
+
+  // Authentication check
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    // File size check
+    if (req.file.size > 50 * 1024 * 1024) {
+      return res
+        .status(400)
+        .json({ error: "Arquivo muito grande. Limite de 50MB." });
+    }
+
+    // Detect file type
+    const fileTypeResult = await fileTypeFromBuffer(req.file.buffer);
+    const detectedMimeType = fileTypeResult
+      ? fileTypeResult.mime
+      : "application/octet-stream";
+
+    // File type check
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "video/mp4",
+      "application/octet-stream",
+    ];
+    if (!allowedTypes.includes(detectedMimeType)) {
+      return res.status(400).json({ error: "Tipo de arquivo não permitido" });
+    }
+
+    // Sanitize filename
+    const sanitizeFilename = (filename) => {
+      const sanitized = path.basename(filename);
+      return sanitized
+        .replace(/[^a-zA-Z0-9_.-]/g, "_")
+        .replace(/^\.+/, "")
+        .slice(0, 255);
+    };
+
+    // Prepare file info
+    const fileInfo = {
+      filename: sanitizeFilename(req.file.originalname),
+      originalName: req.file.originalname,
+      mimetype: detectedMimeType,
+      size: req.file.size,
+      userId: userId,
+    };
+
+    const filePath = path.join(uploadsPath, fileInfo.filename);
+    await fs.promises.writeFile(filePath, req.file.buffer);
+    console.log("File saved to:", filePath);
+    console.log("File exists after save:", fs.existsSync(filePath));
+
+    // Determine file type
+    const fileExtension = path.extname(fileInfo.originalName).toLowerCase();
+    const fileType = [".jpg", ".jpeg", ".png", ".gif"].includes(fileExtension)
+      ? "image"
+      : "video";
+
+    // Get image dimensions if it's an image
+    let width, height;
+    if (fileType === "image") {
+      try {
+        const dimensions = await getImageDimensions(filePath);
+        width = dimensions.width;
+        height = dimensions.height;
+      } catch (error) {
+        console.error("Error getting image dimensions:", error);
+        width = null;
+        height = null;
+      }
+    } else if (fileType === "video") {
+      try {
+        const dimensions = await getVideoDimensions(filePath);
+        width = dimensions.width;
+        height = dimensions.height;
+      } catch (error) {
+        console.error("Error getting video dimensions:", error);
+        width = null;
+        height = null;
+      }
+    }
+
+    // Database operations
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    const [result] = await connection.execute(
+      "INSERT INTO files (filename, original_name, mimetype, size, user_id, file_type, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        fileInfo.filename,
+        fileInfo.originalName,
+        fileInfo.mimetype,
+        fileInfo.size,
+        fileInfo.userId,
+        fileType,
+        width || null,
+        height || null,
+      ]
+    );
+
+    // Prepare response
+    const fileUrl = `${process.env.SERVER_URL}/uploads/${fileInfo.filename}`;
+    console.log(`File uploaded: ${fileInfo.filename} (${fileInfo.size} bytes)`);
+
+    const response = {
+      message: "Arquivo enviado com sucesso",
+      file: {
+        ...fileInfo,
+        id: result.insertId,
+        url: fileUrl,
+        type: fileType,
+        width,
+        height,
+      },
+    };
+
+    console.log("Sending response:", response);
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Erro ao enviar o arquivo:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Arquivo já existe" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "An unexpected error occurred",
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+// Add this function to get image dimensions
+function getImageDimensions(filePath) {
+  console.log("File path:", filePath);
+  console.log("File exists:", fs.existsSync(filePath));
+  return new Promise((resolve, reject) => {
+    fs.readFile(filePath, (err, buffer) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      try {
+        const dimensions = sizeOf(buffer);
+        resolve(dimensions);
+      } catch (error) {
+        console.error("Error in sizeOf:", error);
+        reject(error);
+      }
+    });
+  });
+}
+
+// Function for video dimensions
+function getVideoDimensions(filePath) {
+  return new Promise((resolve, reject) => {
+    exec(
+      `ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=width,height -of json "${filePath}"`,
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error executing ffprobe: ${error}`);
+          reject(error);
+          return;
+        }
+        try {
+          const data = JSON.parse(stdout);
+          const dimensions = {
+            width: parseInt(data.streams[0].width),
+            height: parseInt(data.streams[0].height),
+          };
+          resolve(dimensions);
+        } catch (parseError) {
+          console.error(`Error parsing ffprobe output: ${parseError}`);
+          reject(parseError);
+        }
+      }
+    );
+  });
+}
+
+// File messages route
+async function uploadFileMessages(token, receiverId, fileId) {
+  let connection;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const senderId = decoded.userId;
+
+    if (!receiverId || !fileId) {
+      throw new Error("receiverId and fileId are required");
+    }
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Fetch the file information
+    const [fileRows] = await connection.execute(
+      "SELECT id, filename, original_name, mimetype, size, file_type, width, height FROM files WHERE id = ?",
+      [fileId]
+    );
+
+    if (fileRows.length === 0) {
+      throw new Error("File not found");
+    }
+
+    const fileInfo = fileRows[0];
+
+    // Insert the file message
+    const messageId = uuidv4();
+    const timestamp = new Date().toISOString();
+    const messageContent = JSON.stringify({
+      type: "file",
+      fileId,
+      fileInfo: {
+        ...fileInfo,
+        url: `${process.env.SERVER_URL}/uploads/${fileInfo.filename}`,
+      },
+    });
+
+    await connection.execute(
+      "INSERT INTO messages (id, content, timestamp) VALUES (?, ?, NOW())",
+      [messageId, messageContent]
+    );
+
+    // Link the message to users
+    await connection.execute(
+      "INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?), (?, ?, ?)",
+      [senderId, messageId, 1, receiverId, messageId, 0]
+    );
+
+    // Insert into file_messages table
+    await connection.execute(
+      "INSERT INTO file_messages (id, message_id, file_id, original_name, file_type, file_size, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        uuidv4(),
+        messageId,
+        fileId,
+        fileInfo.original_name,
+        fileInfo.file_type,
+        fileInfo.size,
+        fileInfo.width,
+        fileInfo.height,
+      ]
+    );
+
+    // Prepare the message object
+    const message = {
+      id: messageId,
+      senderId,
+      receiverId,
+      content: messageContent,
+      timestamp: timestamp,
+    };
+
+    return message;
+  } catch (error) {
+    console.error("Error sending file message:", error);
+    throw error;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
+
+// Add the route for file messages
+app.post("/api/file-messages", upload.none(), uploadFileMessages);
+
 // Lógica do Socket.io
 io.on("connection", (socket) => {
   console.log("Novo cliente conectado");
@@ -603,6 +958,7 @@ io.on("connection", (socket) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = decoded.userId;
       socket.userId = userId;
+      socket.join(userId); // Join a room with the user's ID
 
       // Enviar mensagens antigas para o usuário
       const oldMessages = await getMessages(userId);
@@ -610,6 +966,34 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Authentication error:", error);
       socket.disconnect();
+    }
+  });
+
+  socket.on("file_message", async (msg) => {
+    if (!socket.userId) {
+      console.error("Erro: userId não definido");
+      return;
+    }
+
+    try {
+      const message = await uploadFileMessages(
+        msg.token,
+        msg.receiverId,
+        msg.fileId
+      );
+
+      // Emit the message to the sender and receiver
+      io.to(socket.userId).emit("file_message", {
+        ...message,
+        is_sender: true,
+      });
+      io.to(message.receiverId).emit("file_message", {
+        ...message,
+        is_sender: false,
+      });
+    } catch (error) {
+      console.error("Error sending file message:", error);
+      socket.emit("message_error", error.message);
     }
   });
 

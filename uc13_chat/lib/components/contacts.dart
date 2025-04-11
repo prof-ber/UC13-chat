@@ -190,16 +190,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  void _startConversation(Contact contact) {
+  void _startConversation(Contact contact) async {
     if (currentUser != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder:
-              (context) =>
-                  ChatScreen(contact: contact, currentUser: currentUser!),
-        ),
-      );
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      if (token != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => ChatScreen(
+                  contact: contact,
+                  currentUser: currentUser!,
+                  token: token, // Add this line
+                ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token not found')),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please log in to start a conversation')),

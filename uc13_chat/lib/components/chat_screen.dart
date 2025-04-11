@@ -6,15 +6,22 @@ import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
 import 'package:uc13_chat/appconstants.dart';
+import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
   final User currentUser;
+  final String token;
 
   const ChatScreen({
     super.key,
     required this.contact,
     required this.currentUser,
+    required this.token,
   });
 
   @override
@@ -227,6 +234,66 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _uploadFile(String token) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'mp4'],
+      );
+      if (result == null) return;
+
+      var uri = Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/upload');
+      var request = http.MultipartRequest('POST', uri);
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      String fileName = result.files.single.name;
+      String fileExtension = fileName.split('.').last.toLowerCase();
+      String fileType = fileExtension == 'mp4' ? 'video' : 'image';
+
+      if (kIsWeb) {
+        var bytes = result.files.single.bytes;
+        request.files.add(
+          http.MultipartFile.fromBytes('file', bytes!, filename: fileName),
+        );
+      } else {
+        var file = File(result.files.single.path!);
+        var stream = http.ByteStream(file.openRead());
+        var length = await file.length();
+        request.files.add(
+          http.MultipartFile('file', stream, length, filename: fileName),
+        );
+      }
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        print('File uploaded successfully');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('File uploaded successfully')));
+        var responseData = json.decode(response.body);
+      } else {
+        print('Failed to upload file. Status code: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        var errorMessage = 'Failed to upload file';
+        try {
+          var responseData = json.decode(response.body);
+          errorMessage = responseData['error'] ?? errorMessage;
+        } catch (_) {}
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
+      }
+    } catch (e) {
+      print('Error uploading file: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error uploading file: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -304,7 +371,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     IconButton(
                       icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
                       //TODO implementar a função de envio de arquivos
-                      onPressed: () => null,
+                      onPressed: () => _uploadFile(widget.token),
                     ),
                     IconButton(
                       icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
@@ -312,6 +379,8 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
+                //Espaço entre as rows
+                SizedBox(height: 8.0),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [

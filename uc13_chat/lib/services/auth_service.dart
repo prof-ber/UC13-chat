@@ -2,7 +2,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../components/contacts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:uc13_chat/appconstants.dart';
+
+const String SERVER_IP = '172.17.9.220';
 
 class AuthService {
   static Future<User?> getCurrentUser() async {
@@ -50,7 +51,7 @@ class AuthService {
 
     try {
       final response = await http.post(
-        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/refresh-token'),
+        Uri.parse('http://$SERVER_IP:3000/api/refresh-token'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'refreshToken': refreshToken}),
       );
@@ -111,7 +112,7 @@ class AuthService {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/login'),
+        Uri.parse('http://$SERVER_IP:3000/api/login'),
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
         },
@@ -146,11 +147,9 @@ class AuthService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      print('SharedPreferences cleared');
-      // Add any additional logout logic here, such as API calls to invalidate the token on the server
+      print('Logout successful');
     } catch (e) {
-      print('Error during logout in AuthService: $e');
-      throw e; // Re-throw the error so it can be caught in the UI
+      print('Error during logout: $e');
     }
   }
 

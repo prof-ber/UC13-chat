@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
+import 'user_status_service.dart';
 
 class AppState with ChangeNotifier {
   static final AppState _instance = AppState._internal();
@@ -14,10 +15,18 @@ class AppState with ChangeNotifier {
   bool _isLoggedIn = false;
   String? _userId;
   Map<String, Uint8List> _profilePictureCache = {};
+  Map<String, bool> _userStatuses = {};
+  String _connectionStatus = 'Disconnected';
 
   bool get initialDataLoaded => _initialDataLoaded;
   bool get isLoggedIn => _isLoggedIn;
   String? get userId => _userId;
+  String get connectionStatus => _connectionStatus;
+
+  void setConnectionStatus(String status) {
+    _connectionStatus = status;
+    notifyListeners();
+  }
 
   void setInitialDataLoaded(bool value) {
     _initialDataLoaded = value;
@@ -41,6 +50,21 @@ class AppState with ChangeNotifier {
 
   void clearCache() {
     _profilePictureCache.clear();
+    notifyListeners();
+  }
+
+  // Métodos para gerenciar o status do usuário
+  bool isUserOnline(String userId) {
+    return _userStatuses[userId] ?? false;
+  }
+
+  Future<void> updateUserStatus(String userId) async {
+    final isOnline = await UserStatusService.getUserStatus(userId);
+    setUserStatus(userId, isOnline);
+  }
+
+  void setUserStatus(String userId, bool isOnline) {
+    _userStatuses[userId] = isOnline;
     notifyListeners();
   }
 }

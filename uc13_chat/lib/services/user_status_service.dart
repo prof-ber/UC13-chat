@@ -1,11 +1,13 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../components/chat_screen.dart' show SERVER_IP;
+import 'package:uc13_chat/appconstants.dart';
 
 class UserStatusService {
-  static String get baseUrl => 'http://$SERVER_IP:3000';
+  static String get baseUrl => 'http://${AppConstants.SERVER_IP}:3000';
 
-  static Future<Map<String, bool>> getBulkUserStatus(List<String> userIds) async {
+  static Future<Map<String, bool>> getBulkUserStatus(
+    List<String> userIds,
+  ) async {
     final url = '$baseUrl/api/bulk-user-status';
     try {
       final response = await http.post(

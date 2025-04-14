@@ -4,8 +4,9 @@ import 'dart:convert';
 import 'chat_screen.dart';
 import '../services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-final SERVER_IP = '172.17.9.63';
+import 'package:flutter/services.dart';
+import 'login_screen.dart';
+import 'package:uc13_chat/appconstants.dart';
 
 class User {
   final String id;
@@ -83,7 +84,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         try {
           // Fetch the user's data from the server
           final response = await http.get(
-            Uri.parse('http://$SERVER_IP:3000/api/users/${user.id}'),
+            Uri.parse(
+              'http://${AppConstants.SERVER_IP}:3000/api/users/${user.id}',
+            ),
             headers: <String, String>{'Authorization': 'Bearer $token'},
           );
 
@@ -108,13 +111,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
           // Fetch profile picture
           final pictureResponse = await http.get(
-            Uri.parse('http://$SERVER_IP:3000/api/profile-picture/${user.id}'),
+            Uri.parse(
+              'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${user.id}',
+            ),
             headers: <String, String>{'Authorization': 'Bearer $token'},
           );
           if (pictureResponse.statusCode == 200) {
             setState(() {
               currentUser!.avatarUrl =
-                  'http://$SERVER_IP:3000/api/profile-picture/${user.id}';
+                  'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${user.id}';
             });
           }
         } catch (e) {
@@ -137,7 +142,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final headers = await AuthService.getAuthHeaders();
       final response = await http.get(
-        Uri.parse('http://$SERVER_IP:3000/api/contacts'),
+        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/contacts'),
         headers: headers,
       );
 
@@ -230,21 +235,44 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  void _startConversation(Contact contact) {
+  void _startConversation(Contact contact) async {
     if (currentUser != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatScreen(
-            contact: contact,
-            currentUser: currentUser!,
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      if (token != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => ChatScreen(
+                  contact: contact,
+                  currentUser: currentUser!,
+                  token: token, // Add this line
+                ),
           ),
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token not found')),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please log in to start a conversation')),
       );
+    }
+  }
+
+  void _copyUserId() {
+    if (currentUser != null) {
+      Clipboard.setData(ClipboardData(text: currentUser!.id));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('User ID copied to clipboard')));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No user ID available')));
     }
   }
 
@@ -271,7 +299,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 try {
                   final headers = await AuthService.getAuthHeaders();
                   final response = await http.post(
-                    Uri.parse('http://$SERVER_IP:3000/api/contacts'),
+                    Uri.parse(
+                      'http://${AppConstants.SERVER_IP}:3000/api/contacts',
+                    ),
                     headers: headers,
                     body: json.encode({'contactId': _controller.text}),
                   );
@@ -280,7 +310,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     // Fetch the user's name after adding the contact
                     final userResponse = await http.get(
                       Uri.parse(
-                        'http://$SERVER_IP:3000/api/users/${_controller.text}',
+                        'http://${AppConstants.SERVER_IP}:3000/api/users/${_controller.text}',
                       ),
                       headers: headers,
                     );
@@ -325,8 +355,33 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _logout() async {
-    await AuthService.logout();
-    Navigator.of(context).pushReplacementNamed('/login');
+    try {
+      print('Logging out...');
+      await AuthService.logout();
+      print('Logout successful, navigating to login screen');
+
+      // Navigate back to the login screen
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder:
+              (context) => LoginScreen(
+                setLoggedIn: (bool loggedIn, String? userId) {
+                  if (loggedIn) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (context) => ContactsScreen()),
+                    );
+                  }
+                },
+              ),
+        ),
+        (Route<dynamic> route) => false,
+      );
+    } catch (e) {
+      print('Error during logout: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error logging out: $e')));
+    }
   }
 
   @override
@@ -377,11 +432,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             icon: Icon(Icons.more_vert, color: Colors.black),
             onSelected: (String result) {
               switch (result) {
-                case 'show_name':
-                  _showUserName();
-                  break;
-                case 'refresh_contacts':
-                  _fetchContacts();
+                case 'copy_user_id':
+                  _copyUserId();
                   break;
                 case 'logout':
                   _logout();
@@ -391,8 +443,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             itemBuilder:
                 (BuildContext context) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'refresh_contacts',
-                    child: Text('Refresh Contacts'),
+                    value: 'copy_user_id',
+                    child: Text('Copy User ID'),
                   ),
                   PopupMenuItem<String>(value: 'logout', child: Text('Logout')),
                 ],
@@ -419,7 +471,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             backgroundImage:
                                 contact.avatarUrl != null
                                     ? NetworkImage(
-                                      'http://$SERVER_IP:3000/api/profile-picture/${contact.id}',
+                                      'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/${contact.id}',
                                     )
                                     : null,
                             child:

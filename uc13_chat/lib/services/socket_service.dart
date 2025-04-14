@@ -1,6 +1,7 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_state.dart';
+import 'package:uc13_chat/appconstants.dart';
 
 class SocketService {
   static SocketService? _instance;
@@ -8,14 +9,12 @@ class SocketService {
     _instance ??= SocketService._internal(appState);
     return _instance!;
   }
-  
+
   final AppState appState;
   SocketService._internal(this.appState);
 
   IO.Socket? _socket;
-  final String _serverIP = "172.17.9.63";
   String connectionStatus = 'Disconnected';
-
 
   Future<void> initSocket() async {
     final prefs = await SharedPreferences.getInstance();
@@ -26,7 +25,7 @@ class SocketService {
       return;
     }
 
-    _socket = IO.io('http://$_serverIP:3000', <String, dynamic>{
+    _socket = IO.io('http://${AppConstants.SERVER_IP}:3000', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': token},
@@ -52,9 +51,9 @@ class SocketService {
   }
 
   Future<void> reconnect() async {
-  disconnect();
-  await initSocket();
-}
+    disconnect();
+    await initSocket();
+  }
 
   void emit(String event, dynamic data) {
     _socket?.emit(event, data);

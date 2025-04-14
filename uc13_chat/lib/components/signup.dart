@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
-final SERVER_IP = "172.17.9.63";
+import 'package:uc13_chat/appconstants.dart';
 
 class CadastroScreen extends StatefulWidget {
   @override
@@ -26,7 +25,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
       try {
         print('Sending request with body: ${jsonEncode(body)}');
         final response = await http.post(
-          Uri.parse('http://$SERVER_IP:3000/api/cadastro'),
+          Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/cadastro'),
           headers: <String, String>{
             'Content-Type': 'application/json; charset=UTF-8',
           },

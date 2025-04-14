@@ -190,6 +190,51 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  void _showUserName() {
+    if (currentUser != null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Your Profile'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Name: ${currentUser!.name}',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 10),
+                if (currentUser!.avatarUrl != null)
+                  ClipOval(
+                    child: Image.network(
+                      currentUser!.avatarUrl!,
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('Close'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No user logged in')));
+    }
+  }
+
   void _startConversation(Contact contact) async {
     if (currentUser != null) {
       final prefs = await SharedPreferences.getInstance();

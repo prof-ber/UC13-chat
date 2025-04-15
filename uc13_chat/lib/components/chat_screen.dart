@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
+import 'chat_app_bar.dart' as app_bar;
 import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
@@ -9,9 +10,18 @@ import '../services/socket_service.dart';
 import '../services/app_state.dart';
 import 'package:provider/provider.dart';
 import '../services/user_status_service.dart';
+import 'app_theme.dart';
 
 
-final SERVER_IP = "172.17.9.63";
+final SERVER_IP = "172.17.9.139";
+
+app_bar.Contact convertToAppBarContact(Contact contact) {
+  return app_bar.Contact(
+    id: contact.id,
+    name: contact.name,
+    avatarUrl: contact.avatarUrl,
+  );
+}
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -32,6 +42,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   late final SocketService _socketService;
+  late final AppState _appState;
   String connectionStatus = 'Disconnected';
   final ObservableList<Message> messages = ObservableList<Message>();
 
@@ -40,10 +51,14 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadUserAvatar() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
-  
+    
     if (userId != null) {
+      // Certifique-se de que a URL está correta, sem duplicação
       final avatarUrl = 'http://$SERVER_IP:3000/api/profile-picture/$userId';
+      print('Loading avatar from: $avatarUrl'); // Log para depuração
+      
       setState(() {
+        // Use NetworkImage diretamente, sem concatenar com outras URLs
         _avatarImage = NetworkImage(avatarUrl);
       });
     } else {
@@ -53,29 +68,39 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
- Future<void> _initializeSocketService() async {
-  await _socketService.initSocket();
+   Future<void> _initializeSocketService() async {
+   await _socketService.initSocket();
 
-  _socketService.on('connect', (_) {
+   _socketService.on('connect', (_) {
     if (_isMounted) {
       setState(() {
         connectionStatus = _socketService.connectionStatus;
       });
     }
     print('Connection established');
-  });
+   });
 
-  _socketService.on('userStatusChanged', (data) {
-    final userId = data['userId'];
-    final isOnline = data['isOnline'];
-    final appState = Provider.of<AppState>(context, listen: false);
-    appState.setUserStatus(userId, isOnline);
-    if (mounted) {
-      setState(() {
-        // Atualiza a UI se necessário
-      });
-    }
-  });
+   _socketService.on('userStatusChanged', (data) {
+     // Verifique se o widget ainda está montado antes de acessar o context
+     if (!_isMounted) return;
+     
+     try {
+       final userId = data['userId'];
+       final isOnline = data['isOnline'];
+       
+       // Armazene a referência ao AppState no initState para evitar acessar o context aqui
+       final appState = Provider.of<AppState>(context, listen: false);
+       appState.setUserStatus(userId, isOnline);
+       
+       if (mounted) {
+         setState(() {
+           // Atualiza a UI se necessário
+         });
+       }
+     } catch (e) {
+       print('Error handling userStatusChanged: $e');
+     }
+   });
   
     _socketService.on('disconnect', (_) {
       if (_isMounted) {
@@ -99,9 +124,9 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _socketService.on('user_status', _handleUserStatus);
     _socketService.on('message', _handleNewMessage);
     _socketService.on('avatar_updated', _handleAvatarUpdated);
-  }
+   }
 
-  Timer? _statusCheckTimer;
+   Timer? _statusCheckTimer;
 
 
 @override
@@ -111,8 +136,8 @@ void initState() {
   _isMounted = true;
   WidgetsBinding.instance.addObserver(this);
   
-  final appState = Provider.of<AppState>(context, listen: false);
-  _socketService = SocketService(appState);
+  _appState = Provider.of<AppState>(context, listen: false);
+  _socketService = SocketService(_appState);
   
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _loadUserAvatar();
@@ -190,11 +215,11 @@ void initState() {
 }
 
 void _updateAllUserStatuses() async {
-  final appState = Provider.of<AppState>(context, listen: false);
+  // Use _appState em vez de acessar o context
   List<String> userIds = [widget.contact.id];
   Map<String, bool> statuses = await UserStatusService.getBulkUserStatus(userIds);
   statuses.forEach((userId, isOnline) {
-    appState.setUserStatus(userId, isOnline);
+    _appState.setUserStatus(userId, isOnline);
   });
   if (mounted) {
     setState(() {
@@ -205,8 +230,8 @@ void _updateAllUserStatuses() async {
 
 void _handleUserStatus(dynamic data) {
   if (_isMounted && data['userId'] == widget.contact.id) {
-    final appState = Provider.of<AppState>(context, listen: false);
-    appState.setUserStatus(data['userId'], data['status'] == 'online');
+    // Use _appState em vez de acessar o context
+    _appState.setUserStatus(data['userId'], data['status'] == 'online');
   }
 }
 
@@ -268,78 +293,50 @@ void _handleAvatarUpdated(dynamic data) {
 
   @override
   Widget build(BuildContext context) {
+    final appTheme = Provider.of<AppTheme>(context);
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF1e1e1e),
- appBar: AppBar(
-      backgroundColor: const Color(0xFF1F2C34),
-      leadingWidth: 100,
-      leading: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          CircleAvatar(
-            backgroundImage: _avatarImage,
-            onBackgroundImageError: (exception, stackTrace) {
-              if (mounted) {
-                setState(() {
-                  _avatarImage = AssetImage('assets/default_avatar.png');
-                });
-              }
-            },
-            radius: 18,
-            child: _avatarImage == null ? Icon(Icons.person) : null,
-          ),
-        ],
+      backgroundColor: Theme.of(context).colorScheme.background,
+      appBar: app_bar.ChatAppBar(
+        contact: convertToAppBarContact(widget.contact),
+        avatarImage: _avatarImage,
+        onAvatarError: (newImage) {
+          if (mounted) {
+            setState(() {
+              _avatarImage = newImage;
+            });
+          }
+        },
       ),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(widget.contact.name),
-          Consumer<AppState>(
-            builder: (context, appState, child) {
-              final isOnline = appState.isUserOnline(widget.contact.id);
-              return Text(
-                isOnline ? 'Online' : 'Offline',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isOnline ? Colors.green : Colors.grey,
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    ),
       body: Column(
         children: [
           // Barra de status da conexão
           Container(
             padding: const EdgeInsets.all(8.0),
-            color: const Color(0xFF252526), // Fundo secundário
+            color: Theme.of(context).colorScheme.surface,
             child: Text(
               connectionStatus,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFFd4d4d4), // Texto cinza claro
+                color: Theme.of(context).colorScheme.onSurface,
+                fontFamily: appTheme.fontFamily,
               ),
             ),
           ),
-
+  
           // Lista de mensagens
           Expanded(
             child: Container(
-              color: const Color(0xFF1e1e1e), // Fundo principal
+              color: Theme.of(context).colorScheme.background,
               child: ListMessageView(messages: messages),
             ),
           ),
-
+  
           // Campo de texto e botões
           Container(
             padding: const EdgeInsets.all(8.0),
-            color: const Color.fromARGB(255, 37, 38, 37),
+            color: Theme.of(context).colorScheme.surface,
             child: Column(
               children: [
                 TextField(
@@ -347,10 +344,16 @@ void _handleAvatarUpdated(dynamic data) {
                   controller: _controller,
                   decoration: InputDecoration(
                     border: const OutlineInputBorder(),
-                    labelText: 'Enter message',
-                    labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
+                    labelText: 'Digite uma mensagem',
+                    labelStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontFamily: appTheme.fontFamily,
+                    ),
                   ),
-                  style: const TextStyle(color: Color(0xFFd4d4d4)),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontFamily: appTheme.fontFamily,
+                  ),
                   onSubmitted: (_) => _sendMessage(),
                   textInputAction: TextInputAction.send,
                 ),
@@ -359,8 +362,11 @@ void _handleAvatarUpdated(dynamic data) {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton(
-                      onPressed: _sendMessage,  // Adicione este botão
-                      child: const Text('Send'),
+                      onPressed: _sendMessage,
+                      style: ElevatedButton.styleFrom(
+                        textStyle: TextStyle(fontFamily: appTheme.fontFamily),
+                      ),
+                      child: const Text('Enviar'),
                     ),
                     ElevatedButton(
                       onPressed: () async {
@@ -369,7 +375,10 @@ void _handleAvatarUpdated(dynamic data) {
                           connectionStatus = _socketService.connectionStatus;
                         });
                       },
-                      child: const Text('Reconnect'),
+                      style: ElevatedButton.styleFrom(
+                        textStyle: TextStyle(fontFamily: appTheme.fontFamily),
+                      ),
+                      child: const Text('Reconectar'),
                     ),
                   ],
                 ),

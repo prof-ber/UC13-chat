@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final SERVER_IP = "172.17.9.63";
+final SERVER_IP = "172.17.9.139";
 
 class LoginScreen extends StatefulWidget {
   final Function(bool, String?) setLoggedIn;

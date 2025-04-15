@@ -13,7 +13,7 @@ class SocketService {
   SocketService._internal(this.appState);
 
   IO.Socket? _socket;
-  final String _serverIP = "172.17.9.63";
+  final String _serverIP = "172.17.9.139";
   String connectionStatus = 'Disconnected';
 
 

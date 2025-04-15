@@ -6,6 +6,7 @@ import 'login_screen.dart';
 import 'signup.dart';
 import 'profile_picture.dart';
 import 'contacts.dart';
+import 'theme_settings.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -77,7 +78,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat App')),
+      appBar: AppBar(title: const Text('Chat App'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.color_lens),
+            tooltip: 'Personalizar tema',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ThemeSettingsScreen()),
+              );
+            },
+          ),
+          // ... outros botões existentes ...
+        ],),
       body: Center(
         child: Consumer<AppState>(
           builder: (context, appState, child) {

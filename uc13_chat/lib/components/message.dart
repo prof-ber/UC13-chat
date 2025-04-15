@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'app_theme.dart';
+import 'text_styles.dart';
 
 enum MessageDirection { from, to }
 
@@ -16,10 +19,7 @@ class MessageWidget extends StatelessWidget {
   final DateTime timestamp;
   final MessageDirection direction;
 
-  // Estilos centralizados
-  static const Color _fromColor = Color(0xFF6a0dad);
-  static const Color _toColor = Color(0xFF00bcd4);
-  static const String _fontFamily = 'RobotoMono';
+  // Mantemos apenas a sombra como estilo estático
   static const _boxShadow = BoxShadow(
     color: Colors.black38,
     blurRadius: 4,
@@ -42,62 +42,82 @@ class MessageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Obtemos o tema atual
+    final appTheme = Provider.of<AppTheme>(context);
+    
+    // Definimos as cores com base na direção da mensagem e no tema
+    final messageColor = direction == MessageDirection.from 
+        ? appTheme.fromMessageColor  // Mensagens recebidas
+        : appTheme.toMessageColor;   // Mensagens enviadas
+    
+    // Definimos as cores de texto com base na direção da mensagem
+    final textColor = direction == MessageDirection.from 
+        ? appTheme.fromTextColor     // Cor do texto para mensagens recebidas
+        : appTheme.toTextColor;      // Cor do texto para mensagens enviadas
+    
     return Align(
       alignment: direction == MessageDirection.from 
           ? Alignment.centerLeft 
           : Alignment.centerRight,
       child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: direction == MessageDirection.from ? _fromColor : _toColor,
+          color: messageColor,
           borderRadius: _getBorderRadius(),
           boxShadow: const [_boxShadow],
         ),
-        child: Column(
-          crossAxisAlignment: direction == MessageDirection.from 
-              ? CrossAxisAlignment.start 
-              : CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              direction == MessageDirection.to ? 'Você' : name,
-              style: const TextStyle(
-                fontFamily: _fontFamily,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: Colors.white70,
-                letterSpacing: -0.5,
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          minWidth: 0, // Permite que a largura seja tão pequena quanto necessário
+        ),
+        child: IntrinsicWidth( // Adiciona IntrinsicWidth para ajustar ao conteúdo
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Nome do remetente
+              Text(
+                name,
+                style: TextStyles.getMessageTextStyle(
+                  appTheme.fontFamily,
+                  textColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              style: const TextStyle(
-                fontFamily: _fontFamily,
-                fontSize: 14,
-                color: Colors.white,
-                letterSpacing: -0.5,
+              const SizedBox(height: 4),
+              // Conteúdo da mensagem
+              Text(
+                message,
+                style: TextStyles.getMessageTextStyle(
+                  appTheme.fontFamily,
+                  textColor,
+                  fontSize: 16,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _formatTime(timestamp),
-              style: const TextStyle(
-                fontSize: 10,
-                color: Colors.white60,
+              const SizedBox(height: 4),
+              // Timestamp
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Text(
+                  _formatTime(timestamp),
+                  style: TextStyles.getMessageTextStyle(
+                    appTheme.fontFamily,
+                    textColor.withOpacity(0.7),
+                    fontSize: 12,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   String _formatTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 }

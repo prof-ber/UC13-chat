@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:convert';
+import '../services/cripto.dart';
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -40,6 +41,8 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   late final SocketService _socketService;
   String connectionStatus = 'Disconnected';
   final ObservableList<Message> messages = ObservableList<Message>();
+  final EncryptionService _encryptionService = EncryptionService();
+  bool _encryptionEnabled = false;
 
   bool _isMounted = false;
 
@@ -125,6 +128,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _initializeSocketService();
       _startStatusCheckTimer();
       _updateAllUserStatuses();
+      _setupEncryption();
 
       if (_messageFocusNode.hasFocus) {
         _messageFocusNode.unfocus();
@@ -171,30 +175,54 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  void _handleOldMessages(dynamic data) {
+  void _handleOldMessages(dynamic data) async {
     if (_isMounted) {
       setState(() {
         messages.clear(); // Limpa as mensagens existentes
-        if (data is List) {
-          try {
-            messages.addAll(
-              data.map((m) {
-                return Message(
-                  name: m['is_sender'] == 1 ? 'You' : 'Other',
-                  text: m['content'] ?? '',
-                  to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
-                  timestamp:
-                      DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
-                );
-              }).toList(),
-            );
-          } catch (e) {
-            print('Error processing old messages: $e');
-          }
-        } else {
-          print('Received data is not a List: $data');
-        }
       });
+
+      if (data is List) {
+        try {
+          List<Message> decryptedMessages = [];
+
+          for (var m in data) {
+            String messageContent = m['content'] ?? '';
+
+            // Only decrypt messages from the other user
+            if (m['is_sender'] != 1 && _encryptionEnabled) {
+              try {
+                messageContent = await _encryptionService.decryptMessage(
+                  messageContent,
+                  widget.currentUser.id,
+                );
+              } catch (e) {
+                print('Error decrypting old message: $e');
+                // Continue with the encrypted message if decryption fails
+              }
+            }
+
+            decryptedMessages.add(
+              Message(
+                name: m['is_sender'] == 1 ? 'You' : 'Other',
+                text: messageContent,
+                to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
+                timestamp:
+                    DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
+              ),
+            );
+          }
+
+          if (mounted) {
+            setState(() {
+              messages.addAll(decryptedMessages);
+            });
+          }
+        } catch (e) {
+          print('Error processing old messages: $e');
+        }
+      } else {
+        print('Received data is not a List: $data');
+      }
     }
   }
 
@@ -221,13 +249,28 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _handleNewMessage(dynamic data) {
+  void _handleNewMessage(dynamic data) async {
     if (_isMounted) {
+      String messageContent = data['content'];
+
+      // Decrypt the message if it's not from the current user and encryption is enabled
+      if (!data['is_sender'] && _encryptionEnabled) {
+        try {
+          messageContent = await _encryptionService.decryptMessage(
+            messageContent,
+            widget.currentUser.id,
+          );
+        } catch (e) {
+          print('Error decrypting message: $e');
+          // Continue with the encrypted message if decryption fails
+        }
+      }
+
       setState(() {
         messages.add(
           Message(
             name: data['is_sender'] ? 'You' : 'Other',
-            text: data['content'],
+            text: messageContent,
             to: data['is_sender'] ? data['other_user_id'] : 'You',
             timestamp: DateTime.parse(data['timestamp']),
           ),
@@ -255,19 +298,38 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_controller.text.isNotEmpty) {
+      String messageText = _controller.text;
+      String encryptedText = messageText;
+
+      // Encrypt the message if encryption is enabled
+      if (_encryptionEnabled) {
+        try {
+          encryptedText = await _encryptionService.encryptMessage(
+            messageText,
+            widget.contact.id,
+          );
+        } catch (e) {
+          print('Error encrypting message: $e');
+          // Continue with unencrypted message if encryption fails
+        }
+      }
+
       final message = Message(
         name: 'You',
-        text: _controller.text,
+        text: messageText, // Store original text for display
         to: widget.contact.id,
         timestamp: DateTime.now(),
       );
+
+      // Send encrypted message to server
       _socketService.emit('message', {
-        'content': message.text,
+        'content': encryptedText, // Send encrypted text
         'to': message.to,
         'timestamp': message.timestamp.toIso8601String(),
       });
+
       setState(() {
         messages.add(message);
       });
@@ -276,6 +338,44 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _messageFocusNode.requestFocus();
       });
+    }
+  }
+
+  Future<void> _setupEncryption() async {
+    try {
+      // Check if we have keys for this contact
+      bool hasKeys = await _encryptionService.hasKeysForContact(
+        widget.contact.id,
+      );
+
+      if (!hasKeys) {
+        // Exchange keys with the contact
+        bool success = await _encryptionService.exchangeKeys(
+          widget.currentUser.id,
+          widget.contact.id,
+          widget.token,
+        );
+
+        if (success) {
+          if (mounted) {
+            setState(() {
+              _encryptionEnabled = true;
+            });
+          }
+          print('Encryption keys exchanged successfully');
+        } else {
+          print('Failed to exchange encryption keys');
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _encryptionEnabled = true;
+          });
+        }
+        print('Encryption already set up for this contact');
+      }
+    } catch (e) {
+      print('Error setting up encryption: $e');
     }
   }
 
@@ -317,20 +417,36 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           context,
         ).showSnackBar(SnackBar(content: Text('File uploaded successfully')));
         var responseData = json.decode(response.body);
+        String fileUrl = responseData['file']['url'];
+
+        // Encrypt the file URL if encryption is enabled
+        String encryptedContent = fileUrl;
+        if (_encryptionEnabled) {
+          try {
+            encryptedContent = await _encryptionService.encryptMessage(
+              fileUrl,
+              widget.contact.id,
+            );
+          } catch (e) {
+            print('Error encrypting file URL: $e');
+            // Continue with unencrypted URL if encryption fails
+          }
+        }
+
         //Create a new Message with the uploaded file URL
         Message uploadedMessage = Message(
           name: 'You',
-          text: responseData['file']['url'],
+          text: fileUrl, // Store original URL for display
           to: widget.contact.id,
           timestamp: DateTime.now(),
-          fileUrl: responseData['file']['url'],
+          fileUrl: fileUrl,
         );
         setState(() {
           messages.add(uploadedMessage);
         });
         //Send the message to the server
         _socketService.emit('message', {
-          'content': uploadedMessage.text,
+          'content': encryptedContent, // Send encrypted URL
           'to': uploadedMessage.to,
           'timestamp': uploadedMessage.timestamp.toIso8601String(),
         });
@@ -380,7 +496,41 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        title: Text(widget.contact.name),
+        title: Row(
+          children: [
+            Text(widget.contact.name),
+            SizedBox(width: 8),
+            if (_encryptionEnabled)
+              Icon(Icons.lock, color: Colors.green, size: 16)
+            else
+              Icon(Icons.lock_open, color: Colors.red, size: 16),
+          ],
+        ),
+        actions: [
+          // Add a button to manually trigger encryption setup if needed
+          IconButton(
+            icon: Icon(
+              _encryptionEnabled
+                  ? Icons.security
+                  : Icons.security_update_warning,
+              color: _encryptionEnabled ? Colors.green : Colors.amber,
+            ),
+            onPressed: () {
+              if (!_encryptionEnabled) {
+                _setupEncryption();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Attempting to set up encryption...')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Encryption is already enabled')),
+                );
+              }
+            },
+            tooltip:
+                _encryptionEnabled ? 'Encryption enabled' : 'Set up encryption',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -388,13 +538,42 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(8.0),
             color: const Color(0xFF252526), // Fundo secundário
-            child: Text(
-              connectionStatus,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFd4d4d4), // Texto cinza claro
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  connectionStatus,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFd4d4d4), // Texto cinza claro
+                  ),
+                ),
+                SizedBox(width: 8),
+                // Show encryption status in the connection bar
+                if (_encryptionEnabled)
+                  Row(
+                    children: [
+                      Icon(Icons.lock, color: Colors.green, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Encrypted',
+                        style: TextStyle(fontSize: 14, color: Colors.green),
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Icon(Icons.lock_open, color: Colors.red, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Not Encrypted',
+                        style: TextStyle(fontSize: 14, color: Colors.red),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ),
 
@@ -422,6 +601,19 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           border: const OutlineInputBorder(),
                           labelText: 'Enter message',
                           labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
+                          // Add a lock icon to the text field to indicate encryption
+                          prefixIcon:
+                              _encryptionEnabled
+                                  ? Icon(
+                                    Icons.lock,
+                                    color: Colors.green,
+                                    size: 16,
+                                  )
+                                  : Icon(
+                                    Icons.lock_open,
+                                    color: Colors.red,
+                                    size: 16,
+                                  ),
                         ),
                         style: const TextStyle(color: Color(0xFFd4d4d4)),
                         onSubmitted: (_) => _sendMessage(),
@@ -430,7 +622,6 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                     IconButton(
                       icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
-                      //TODO implementar a função de envio de arquivos
                       onPressed: () => _uploadFile(widget.token),
                     ),
                     IconButton(

@@ -6,6 +6,7 @@ class Message {
   final String? fileUrl;
   final double? width;
   final double? height;
+  final bool isEncrypted;
 
   Message({
     required this.name,
@@ -15,6 +16,7 @@ class Message {
     this.fileUrl,
     this.width,
     this.height,
+    this.isEncrypted = true,
   });
 
   Map<String, dynamic> toJson() {
@@ -26,6 +28,7 @@ class Message {
       'fileUrl': fileUrl,
       'width': width,
       'height': height,
+      'isEncrypted': isEncrypted,
     };
   }
 
@@ -38,6 +41,7 @@ class Message {
       fileUrl: json['fileUrl'],
       width: json['width'],
       height: json['height'],
+      isEncrypted: json['isEncrypted'] ?? true,
     );
   }
 }

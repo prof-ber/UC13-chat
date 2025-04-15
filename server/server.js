@@ -14,6 +14,7 @@ import sizeOf from "image-size";
 import { fileTypeFromBuffer } from "file-type";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import crypto from "crypto";
 const upload = multer({ storage: multer.memoryStorage() });
 dotenv.config();
 uuidv4(); // Gera um ID único para o usuário
@@ -528,6 +529,563 @@ app.get("/api/profile-picture/:userId", async (req, res) => {
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Route to store user's public key
+app.post("/api/keys/public", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  const { publicKey } = req.body;
+
+  if (!publicKey) {
+    return res.status(400).json({ error: "Public key is required" });
+  }
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Check if user already has a public key
+    const [existingKeys] = await connection.execute(
+      "SELECT * FROM user_keys WHERE user_id = ?",
+      [userId]
+    );
+
+    if (existingKeys.length > 0) {
+      // Update existing key
+      await connection.execute(
+        "UPDATE user_keys SET public_key = ? WHERE user_id = ?",
+        [publicKey, userId]
+      );
+    } else {
+      // Insert new key
+      await connection.execute(
+        "INSERT INTO user_keys (user_id, public_key) VALUES (?, ?)",
+        [userId, publicKey]
+      );
+    }
+
+    res.status(200).json({ message: "Public key stored successfully" });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error storing public key:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Route to get a user's public key
+app.get("/api/keys/public/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    jwt.verify(token, process.env.JWT_SECRET);
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    const [rows] = await connection.execute(
+      "SELECT public_key FROM user_keys WHERE user_id = ?",
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Public key not found for user" });
+    }
+
+    res.status(200).json({ publicKey: rows[0].public_key });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error fetching public key:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Route to encrypt a message for a recipient
+app.post("/api/encrypt", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  const { recipientId, message } = req.body;
+
+  if (!recipientId || !message) {
+    return res
+      .status(400)
+      .json({ error: "Recipient ID and message are required" });
+  }
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const senderId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Get recipient's public key
+    const [keyRows] = await connection.execute(
+      "SELECT public_key FROM user_keys WHERE user_id = ?",
+      [recipientId]
+    );
+
+    if (keyRows.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Recipient's public key not found" });
+    }
+
+    const publicKey = keyRows[0].public_key;
+
+    // Encrypt the message with recipient's public key
+    const encryptedMessage = crypto.publicEncrypt(
+      {
+        key: publicKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
+      },
+      Buffer.from(message)
+    );
+
+    // Return the encrypted message
+    res.status(200).json({
+      encryptedMessage: encryptedMessage.toString("base64"),
+      senderId,
+      recipientId,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error encrypting message:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Create the user_keys table if it doesn't exist
+async function createUserKeysTable() {
+  try {
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_keys (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(128) NOT NULL,
+        public_key TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_id (user_id)
+      )
+    `);
+
+    connection.end();
+    log(LOG_LEVELS.INFO, "User keys table created or already exists");
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error creating user_keys table:", error);
+  }
+}
+
+// Call this function during server initialization
+createUserKeysTable();
+
+// Socket.io message handler with default encryption
+io.on("connection", (socket) => {
+  // Existing socket connection code would be here
+
+  // Replace the existing message handler with this encryption-by-default version
+  socket.on("message", async (data) => {
+    try {
+      const { content, to, timestamp } = data;
+
+      if (!socket.userId) {
+        socket.emit("error", { message: "Not authenticated" });
+        return;
+      }
+
+      const senderId = socket.userId;
+      const recipientId = to;
+
+      if (!recipientId || !content) {
+        socket.emit("error", {
+          message: "Recipient ID and message content are required",
+        });
+        return;
+      }
+
+      // Generate a message ID
+      const messageId = uuidv4();
+
+      // Try to encrypt the message if recipient has a public key
+      let messageContent;
+      let isEncrypted = false;
+
+      try {
+        const connection = await mysql.createConnection({
+          host: process.env.DB_HOST,
+          user: process.env.DB_USER,
+          password: process.env.DB_PASSWORD,
+          database: process.env.DB_NAME,
+        });
+
+        // Check if recipient has a public key
+        const [keyRows] = await connection.execute(
+          "SELECT public_key FROM user_keys WHERE user_id = ?",
+          [recipientId]
+        );
+
+        if (keyRows.length > 0) {
+          // Recipient has a public key, encrypt the message
+          const publicKey = keyRows[0].public_key;
+
+          // Encrypt the message with recipient's public key
+          const encryptedMessage = crypto.publicEncrypt(
+            {
+              key: publicKey,
+              padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+              oaepHash: "sha256",
+            },
+            Buffer.from(content)
+          );
+
+          // Convert to base64 for storage and transmission
+          const encryptedBase64 = encryptedMessage.toString("base64");
+
+          // Create message content with encryption metadata
+          messageContent = JSON.stringify({
+            type: "encrypted",
+            content: encryptedBase64,
+          });
+
+          isEncrypted = true;
+
+          log(
+            LOG_LEVELS.INFO,
+            `Message encrypted for recipient ${recipientId}`
+          );
+        } else {
+          // No public key found, store as plaintext
+          log(
+            LOG_LEVELS.WARN,
+            `No public key found for recipient ${recipientId}, sending unencrypted`
+          );
+          messageContent = content;
+        }
+
+        await connection.end();
+      } catch (error) {
+        log(LOG_LEVELS.ERROR, "Error during encryption attempt:", error);
+        // If encryption fails, fall back to plaintext
+        messageContent = content;
+      }
+
+      // Save message to database
+      if (isEncrypted) {
+        await saveEncryptedMessage(senderId, recipientId, messageContent);
+      } else {
+        await saveMessage(senderId, recipientId, messageContent);
+      }
+
+      // Find recipient's socket if they're online
+      const recipientSocketId = [...io.sockets.sockets.values()].find(
+        (s) => s.userId === recipientId
+      )?.id;
+
+      // Send the message to the recipient if they're online
+      if (recipientSocketId) {
+        if (isEncrypted) {
+          // Send as encrypted message
+          const encryptedContent = JSON.parse(messageContent).content;
+          io.to(recipientSocketId).emit("encrypted_message", {
+            id: messageId,
+            senderId,
+            encryptedMessage: encryptedContent,
+            timestamp: timestamp || new Date().toISOString(),
+          });
+        } else {
+          // Send as regular message
+          io.to(recipientSocketId).emit("message", {
+            id: messageId,
+            senderId,
+            text: messageContent,
+            timestamp: timestamp || new Date().toISOString(),
+          });
+        }
+      }
+
+      // Acknowledge message receipt to sender
+      socket.emit("message_sent", { messageId });
+    } catch (error) {
+      log(LOG_LEVELS.ERROR, "Error handling message:", error);
+      socket.emit("error", { message: "Failed to process message" });
+    }
+  });
+
+  // Keep the existing encrypted_message handler for backward compatibility
+  socket.on("encrypted_message", async (data) => {
+    try {
+      const { encryptedMessage, recipientId } = data;
+
+      if (!socket.userId) {
+        socket.emit("error", { message: "Not authenticated" });
+        return;
+      }
+
+      const senderId = socket.userId;
+
+      // Store the encrypted message in the database
+      const messageId = uuidv4();
+      const messageContent = JSON.stringify({
+        type: "encrypted",
+        content: encryptedMessage,
+      });
+
+      // Save to database
+      await saveEncryptedMessage(senderId, recipientId, messageContent);
+
+      // Emit to recipient if online
+      const recipientSocketId = [...io.sockets.sockets.values()].find(
+        (s) => s.userId === recipientId
+      )?.id;
+
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("encrypted_message", {
+          id: messageId,
+          senderId,
+          encryptedMessage,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Acknowledge message receipt to sender
+      socket.emit("message_sent", { messageId });
+    } catch (error) {
+      log(LOG_LEVELS.ERROR, "Error handling encrypted message:", error);
+      socket.emit("error", { message: "Failed to process encrypted message" });
+    }
+  });
+});
+
+// Function to save encrypted messages
+async function saveEncryptedMessage(senderId, recipientId, content) {
+  const connection = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+  });
+
+  try {
+    await connection.beginTransaction();
+
+    // Insert the message
+    const messageId = uuidv4();
+    await connection.execute(
+      "INSERT INTO messages (id, content, timestamp) VALUES (?, ?, NOW())",
+      [messageId, content]
+    );
+
+    // Associate the message with sender
+    await connection.execute(
+      "INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)",
+      [senderId, messageId, true]
+    );
+
+    // Associate the message with recipient
+    await connection.execute(
+      "INSERT INTO users_messages (user_id, message_id, is_sender) VALUES (?, ?, ?)",
+      [recipientId, messageId, false]
+    );
+
+    await connection.commit();
+    return messageId;
+  } catch (error) {
+    await connection.rollback();
+    log(LOG_LEVELS.ERROR, "Error saving encrypted message to database:", error);
+    throw error;
+  } finally {
+    await connection.end();
+  }
+}
+
+// Add a route to check if a user has keys
+app.get("/api/keys/check", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Check if user has a key pair
+    const [existingKeys] = await connection.execute(
+      "SELECT * FROM user_keys WHERE user_id = ?",
+      [userId]
+    );
+
+    res.status(200).json({
+      hasKeys: existingKeys.length > 0,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error checking keys:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+});
+
+// Add a route to generate key pairs for users who don't have them
+app.post("/api/keys/generate", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  let connection;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+
+    // Check if user already has a key pair
+    const [existingKeys] = await connection.execute(
+      "SELECT * FROM user_keys WHERE user_id = ?",
+      [userId]
+    );
+
+    if (existingKeys.length > 0) {
+      return res.status(200).json({
+        message: "User already has a key pair",
+        hasKeys: true,
+      });
+    }
+
+    // Generate a new RSA key pair
+    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: {
+        type: "spki",
+        format: "pem",
+      },
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+      },
+    });
+
+    // Store the public key in the database
+    await connection.execute(
+      "INSERT INTO user_keys (user_id, public_key) VALUES (?, ?)",
+      [userId, publicKey]
+    );
+
+    // Return the private key to the client (they should store it securely)
+    res.status(201).json({
+      message: "Key pair generated successfully",
+      privateKey: privateKey,
+      hasKeys: true,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, "Error generating key pair:", error);
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   } finally {
     if (connection) {
       await connection.end();

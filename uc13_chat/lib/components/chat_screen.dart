@@ -10,7 +10,6 @@ import '../services/socket_service.dart';
 import '../services/app_state.dart';
 import 'package:provider/provider.dart';
 import '../services/user_status_service.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:uc13_chat/appconstants.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
@@ -400,14 +399,34 @@ void _handleUserStatus(dynamic data) {
           Container(
             padding: const EdgeInsets.all(8.0),
             color: Theme.of(context).colorScheme.surface,
-            child: Text(
-              connectionStatus,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-                fontFamily: appTheme.fontFamily,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  connectionStatus,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontFamily: appTheme.fontFamily,
+                  ),
+                ),
+                if (connectionStatus != 'Connected')
+                  TextButton.icon(
+                    icon: Icon(Icons.refresh),
+                    label: Text('Reconectar'),
+                    onPressed: () async {
+                      await _socketService.reconnect();
+                      setState(() {
+                        connectionStatus = _socketService.connectionStatus;
+                      });
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      textStyle: TextStyle(fontFamily: appTheme.fontFamily),
+                    ),
+                  ),
+              ],
             ),
           ),
   
@@ -421,60 +440,56 @@ void _handleUserStatus(dynamic data) {
   
           // Campo de texto e botões
           Container(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
             color: Theme.of(context).colorScheme.surface,
-            child: Column(
+            child: Row(
               children: [
-                TextField(
-                  focusNode: _messageFocusNode,
-                  controller: _controller,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    labelText: 'Digite uma mensagem',
-                    labelStyle: TextStyle(
+                // Botão de anexo
+                IconButton(
+                  icon: Icon(
+                    Icons.attach_file,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                  onPressed: () => _uploadFile(widget.token),
+                ),
+                // Campo de texto
+                Expanded(
+                  child: TextField(
+                    focusNode: _messageFocusNode,
+                    controller: _controller,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24.0),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        ),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                      hintText: 'Digite uma mensagem',
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        fontFamily: appTheme.fontFamily,
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface,
+                    ),
+                    style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
                       fontFamily: appTheme.fontFamily,
                     ),
+                    onSubmitted: (_) => _sendMessage(),
+                    textInputAction: TextInputAction.send,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
                   ),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontFamily: appTheme.fontFamily,
+                ),
+                // Botão de enviar
+                IconButton(
+                  icon: Icon(
+                    Icons.send,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  onSubmitted: (_) => _sendMessage(),
-                  textInputAction: TextInputAction.send,
-                ),IconButton(
-                      icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
-                      //TODO implementar a função de envio de arquivos
-                      onPressed: () => _uploadFile(widget.token),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
-                      onPressed: _sendMessage,
-                    ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _sendMessage,
-                      style: ElevatedButton.styleFrom(
-                        textStyle: TextStyle(fontFamily: appTheme.fontFamily),
-                      ),
-                      child: const Text('Enviar'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        await _socketService.reconnect();
-                        setState(() {
-                          connectionStatus = _socketService.connectionStatus;
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        textStyle: TextStyle(fontFamily: appTheme.fontFamily),
-                      ),
-                      child: const Text('Reconectar'),
-                    ),
-                  ],
+                  onPressed: _sendMessage,
                 ),
               ],
             ),

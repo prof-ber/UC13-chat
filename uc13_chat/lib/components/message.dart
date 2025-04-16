@@ -57,21 +57,20 @@ class MessageWidget extends StatelessWidget {
     // Obtemos o tema atual
     final appTheme = Provider.of<AppTheme>(context);
     
-    // Definimos as cores com base na direção da mensagem e no tema
-    final messageColor = direction == MessageDirection.from 
-        ? appTheme.fromMessageColor  // Mensagens recebidas
-        : appTheme.toMessageColor;   // Mensagens enviadas
+    // Corrigindo a lógica de cores - invertendo a atribuição
+    final messageColor = direction == MessageDirection.to 
+        ? appTheme.fromMessageColor  // Mensagens enviadas por você
+        : appTheme.toMessageColor;   // Mensagens recebidas
     
-    // Definimos as cores de texto com base na direção da mensagem
-    final textColor = direction == MessageDirection.from 
-        ? appTheme.fromTextColor     // Cor do texto para mensagens recebidas
-        : appTheme.toTextColor;      // Cor do texto para mensagens enviadas
+    // Corrigindo as cores de texto também
+    final textColor = direction == MessageDirection.to 
+        ? appTheme.fromTextColor     // Cor do texto para mensagens enviadas por você
+        : appTheme.toTextColor;      // Cor do texto para mensagens recebidas
     
     return Align(
-      alignment:
-          direction == MessageDirection.from
-              ? Alignment.centerLeft
-              : Alignment.centerRight,
+      alignment: direction == MessageDirection.from 
+          ? Alignment.centerLeft 
+          : Alignment.centerRight,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         padding: const EdgeInsets.all(12),
@@ -84,7 +83,7 @@ class MessageWidget extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
           minWidth: 0, // Permite que a largura seja tão pequena quanto necessário
         ),
-        child: IntrinsicWidth( // Adiciona IntrinsicWidth para ajustar ao conteúdo
+        child: IntrinsicWidth( // Mantém o ajuste ao conteúdo que implementamos antes
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -100,63 +99,6 @@ class MessageWidget extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               // Conteúdo da mensagem
- if (_isImageMessage) ...[
-              Container(
-                constraints: BoxConstraints(
-                  maxHeight: 200,
-                  maxWidth: MediaQuery.of(context).size.width * 0.6,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    message.startsWith('http')
-                        ? message
-                        : 'http://${AppConstants.SERVER_IP}:3000${message}',
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        height: 150,
-                        alignment: Alignment.center,
-                        child: CircularProgressIndicator(
-                          value:
-                              loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                          color: Colors.white70,
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      print("Error loading image: $error");
-                      return Container(
-                        height: 100,
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.white70,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Failed to load image",
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ] else ...[
-              // Display regular text message
               Text(
                 message,
                 style: TextStyles.getMessageTextStyle(
@@ -165,7 +107,6 @@ class MessageWidget extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
-            ],
               const SizedBox(height: 4),
               // Timestamp
               Align(

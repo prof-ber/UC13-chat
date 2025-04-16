@@ -2,8 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../components/contacts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
-const String SERVER_IP = '172.17.9.220';
+import 'package:uc13_chat/appconstants.dart';
 
 class AuthService {
   static Future<User?> getCurrentUser() async {
@@ -51,7 +50,7 @@ class AuthService {
 
     try {
       final response = await http.post(
-        Uri.parse('http://$SERVER_IP:3000/api/refresh-token'),
+        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/refresh-token'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'refreshToken': refreshToken}),
       );
@@ -112,7 +111,7 @@ class AuthService {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('http://$SERVER_IP:3000/api/login'),
+        Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/login'),
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
         },

@@ -8,6 +8,7 @@
 .history
 /server/node_modules
 /server/.env
+/server/uploads
 
 
 # Flutter repo-specific

@@ -31,6 +31,7 @@ CREATE TABLE messages (
     content TEXT NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE messages MODIFY COLUMN content TEXT;
 
 CREATE TABLE users_messages (
     user_id VARCHAR(128),
@@ -39,4 +40,33 @@ CREATE TABLE users_messages (
     PRIMARY KEY (user_id, message_id, is_sender),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS files (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100) NOT NULL,
+  size INT NOT NULL,
+  user_id VARCHAR(128) NOT NULL,
+  file_type ENUM('image', 'video') NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+ALTER TABLE files
+ADD COLUMN width INT,
+ADD COLUMN height INT;
+
+CREATE TABLE IF NOT EXISTS file_messages (
+  id CHAR(36) PRIMARY KEY,
+  message_id CHAR(36) NOT NULL,
+  file_id INT NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  file_type ENUM('image', 'video') NOT NULL,
+  file_size INT NOT NULL,
+  width INT,
+  height INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
 );

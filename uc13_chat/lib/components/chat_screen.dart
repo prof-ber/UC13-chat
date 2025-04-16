@@ -10,10 +10,14 @@ import '../services/socket_service.dart';
 import '../services/app_state.dart';
 import 'package:provider/provider.dart';
 import '../services/user_status_service.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:uc13_chat/appconstants.dart';
+import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:convert';
 import 'app_theme.dart';
-
-
-final SERVER_IP = "172.17.9.139";
 
 app_bar.Contact convertToAppBarContact(Contact contact) {
   return app_bar.Contact(
@@ -26,11 +30,13 @@ app_bar.Contact convertToAppBarContact(Contact contact) {
 class ChatScreen extends StatefulWidget {
   final Contact contact;
   final User currentUser;
+  final String token;
 
   const ChatScreen({
     super.key,
     required this.contact,
     required this.currentUser,
+    required this.token,
   });
 
   @override
@@ -51,12 +57,11 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadUserAvatar() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
+
     
     if (userId != null) {
-      // Certifique-se de que a URL está correta, sem duplicação
-      final avatarUrl = 'http://$SERVER_IP:3000/api/profile-picture/$userId';
-      print('Loading avatar from: $avatarUrl'); // Log para depuração
-      
+      final avatarUrl =
+          'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/$userId';
       setState(() {
         // Use NetworkImage diretamente, sem concatenar com outras URLs
         _avatarImage = NetworkImage(avatarUrl);
@@ -68,17 +73,17 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-   Future<void> _initializeSocketService() async {
-   await _socketService.initSocket();
+  Future<void> _initializeSocketService() async {
+    await _socketService.initSocket();
 
-   _socketService.on('connect', (_) {
-    if (_isMounted) {
-      setState(() {
-        connectionStatus = _socketService.connectionStatus;
-      });
-    }
-    print('Connection established');
-   });
+    _socketService.on('connect', (_) {
+      if (_isMounted) {
+        setState(() {
+          connectionStatus = _socketService.connectionStatus;
+        });
+      }
+      print('Connection established');
+    });
 
    _socketService.on('userStatusChanged', (data) {
      // Verifique se o widget ainda está montado antes de acessar o context
@@ -110,7 +115,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       print('Connection Disconnected');
     });
-  
+
     _socketService.on('connect_error', (err) {
       if (_isMounted) {
         setState(() {
@@ -119,7 +124,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       print('Connect Error: $err');
     });
-  
+
     _socketService.on('old_messages', _handleOldMessages);
     _socketService.on('user_status', _handleUserStatus);
     _socketService.on('message', _handleNewMessage);
@@ -128,36 +133,35 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
    Timer? _statusCheckTimer;
 
+  @override
+  void initState() {
+    super.initState();
 
-@override
-void initState() {
-  super.initState();
-  
-  _isMounted = true;
-  WidgetsBinding.instance.addObserver(this);
-  
-  _appState = Provider.of<AppState>(context, listen: false);
-  _socketService = SocketService(_appState);
-  
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _loadUserAvatar();
-    _initializeSocketService();
-    _startStatusCheckTimer();
-    _updateAllUserStatuses();
-    
-    if (_messageFocusNode.hasFocus) {
-      _messageFocusNode.unfocus();
-    }
-    _messageFocusNode.requestFocus();
-  });
+    _isMounted = true;
+    WidgetsBinding.instance.addObserver(this);
 
-  _messageFocusNode.addListener(() {
-    if (_messageFocusNode.hasFocus) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Scrollable.ensureVisible(context, alignment: 1.0);
-      });
-    }
-  });
+    final appState = Provider.of<AppState>(context, listen: false);
+    _socketService = SocketService(appState);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserAvatar();
+      _initializeSocketService();
+      _startStatusCheckTimer();
+      _updateAllUserStatuses();
+
+      if (_messageFocusNode.hasFocus) {
+        _messageFocusNode.unfocus();
+      }
+      _messageFocusNode.requestFocus();
+    });
+
+    _messageFocusNode.addListener(() {
+      if (_messageFocusNode.hasFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Scrollable.ensureVisible(context, alignment: 1.0);
+        });
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_messageFocusNode.hasFocus) {
@@ -167,13 +171,13 @@ void initState() {
     });
   }
 
-    void _startStatusCheckTimer() {
-      _statusCheckTimer = Timer.periodic(Duration(seconds: 30), (timer) {
-        if (_isMounted) {
-          _updateAllUserStatuses();
-        }
-      });
-    }
+  void _startStatusCheckTimer() {
+    _statusCheckTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      if (_isMounted) {
+        _updateAllUserStatuses();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -183,50 +187,55 @@ void initState() {
     _messageFocusNode.removeListener(() {});
     _messageFocusNode.dispose();
     _controller.dispose();
-    
+
     _socketService.disconnect();
-    
+
     messages.clear();
     super.dispose();
   }
 
   void _handleOldMessages(dynamic data) {
-  if (_isMounted) {
-    setState(() {
-      messages.clear(); // Limpa as mensagens existentes
-      if (data is List) {
-        try {
-          messages.addAll(data.map((m) {
-            return Message(
-              name: m['is_sender'] == 1 ? 'You' : 'Other',
-              text: m['content'] ?? '',
-              to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
-              timestamp: DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
+    if (_isMounted) {
+      setState(() {
+        messages.clear(); // Limpa as mensagens existentes
+        if (data is List) {
+          try {
+            messages.addAll(
+              data.map((m) {
+                return Message(
+                  name: m['is_sender'] == 1 ? 'You' : 'Other',
+                  text: m['content'] ?? '',
+                  to: m['is_sender'] == 1 ? (m['other_user_id'] ?? '') : 'You',
+                  timestamp:
+                      DateTime.tryParse(m['timestamp'] ?? '') ?? DateTime.now(),
+                );
+              }).toList(),
             );
-          }).toList());
-        } catch (e) {
-          print('Error processing old messages: $e');
+          } catch (e) {
+            print('Error processing old messages: $e');
+          }
+        } else {
+          print('Received data is not a List: $data');
         }
-      } else {
-        print('Received data is not a List: $data');
-      }
-    });
+      });
+    }
   }
-}
 
-void _updateAllUserStatuses() async {
-  // Use _appState em vez de acessar o context
-  List<String> userIds = [widget.contact.id];
-  Map<String, bool> statuses = await UserStatusService.getBulkUserStatus(userIds);
-  statuses.forEach((userId, isOnline) {
-    _appState.setUserStatus(userId, isOnline);
-  });
-  if (mounted) {
-    setState(() {
-      // Atualiza a UI se necessário
+  void _updateAllUserStatuses() async {
+    final appState = Provider.of<AppState>(context, listen: false);
+    List<String> userIds = [widget.contact.id];
+    Map<String, bool> statuses = await UserStatusService.getBulkUserStatus(
+      userIds,
+    );
+    statuses.forEach((userId, isOnline) {
+      appState.setUserStatus(userId, isOnline);
     });
+    if (mounted) {
+      setState(() {
+        // Atualiza a UI se necessário
+      });
+    }
   }
-}
 
 void _handleUserStatus(dynamic data) {
   if (_isMounted && data['userId'] == widget.contact.id) {
@@ -235,32 +244,34 @@ void _handleUserStatus(dynamic data) {
   }
 }
 
-void _handleNewMessage(dynamic data) {
-  if (_isMounted) {
-    setState(() {
-      messages.add(Message(
-        name: data['is_sender'] ? 'You' : 'Other',
-        text: data['content'],
-        to: data['is_sender'] ? data['other_user_id'] : 'You',
-        timestamp: DateTime.parse(data['timestamp']),
-      ));
-    });
-    _controller.clear();
+  void _handleNewMessage(dynamic data) {
+    if (_isMounted) {
+      setState(() {
+        messages.add(
+          Message(
+            name: data['is_sender'] ? 'You' : 'Other',
+            text: data['content'],
+            to: data['is_sender'] ? data['other_user_id'] : 'You',
+            timestamp: DateTime.parse(data['timestamp']),
+          ),
+        );
+      });
+      _controller.clear();
 
-    // Mantém o foco no campo após enviar
-    _messageFocusNode.requestFocus();
+      // Mantém o foco no campo após enviar
+      _messageFocusNode.requestFocus();
+    }
   }
-}
 
-void _handleAvatarUpdated(dynamic data) {
-  if (_isMounted) {
-    _loadUserAvatar();
+  void _handleAvatarUpdated(dynamic data) {
+    if (_isMounted) {
+      _loadUserAvatar();
+    }
   }
-}
 
   @override
   void didChangeMetrics() {
-    if (!_isMounted) return;  // Adicione esta linha
+    if (!_isMounted) return; // Adicione esta linha
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
     if (bottomInset > 0) {
       _messageFocusNode.requestFocus();
@@ -284,10 +295,85 @@ void _handleAvatarUpdated(dynamic data) {
         messages.add(message);
       });
       _controller.clear();
-      
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _messageFocusNode.requestFocus();
       });
+    }
+  }
+
+  Future<void> _uploadFile(String token) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'mp4'],
+      );
+      if (result == null) return;
+
+      var uri = Uri.parse('http://${AppConstants.SERVER_IP}:3000/api/upload');
+      var request = http.MultipartRequest('POST', uri);
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      String fileName = result.files.single.name;
+
+      if (kIsWeb) {
+        var bytes = result.files.single.bytes;
+        request.files.add(
+          http.MultipartFile.fromBytes('file', bytes!, filename: fileName),
+        );
+      } else {
+        var file = File(result.files.single.path!);
+        var stream = http.ByteStream(file.openRead());
+        var length = await file.length();
+        request.files.add(
+          http.MultipartFile('file', stream, length, filename: fileName),
+        );
+      }
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        print('File uploaded successfully');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('File uploaded successfully')));
+        var responseData = json.decode(response.body);
+        //Create a new Message with the uploaded file URL
+        Message uploadedMessage = Message(
+          name: 'You',
+          text: responseData['file']['url'],
+          to: widget.contact.id,
+          timestamp: DateTime.now(),
+          fileUrl: responseData['file']['url'],
+        );
+        setState(() {
+          messages.add(uploadedMessage);
+        });
+        //Send the message to the server
+        _socketService.emit('message', {
+          'content': uploadedMessage.text,
+          'to': uploadedMessage.to,
+          'timestamp': uploadedMessage.timestamp.toIso8601String(),
+        });
+      } else {
+        print('Failed to upload file. Status code: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        var errorMessage = 'Failed to upload file';
+        try {
+          var responseData = json.decode(response.body);
+          errorMessage = responseData['error'] ?? errorMessage;
+        } catch (_) {}
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
+      }
+    } catch (e) {
+      print('Error uploading file: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error uploading file: $e')));
     }
   }
 
@@ -356,7 +442,15 @@ void _handleAvatarUpdated(dynamic data) {
                   ),
                   onSubmitted: (_) => _sendMessage(),
                   textInputAction: TextInputAction.send,
-                ),
+                ),IconButton(
+                      icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
+                      //TODO implementar a função de envio de arquivos
+                      onPressed: () => _uploadFile(widget.token),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
+                      onPressed: _sendMessage,
+                    ),
                 const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,

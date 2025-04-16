@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobx/mobx.dart';
 import 'list_message.dart';
+import 'chat_app_bar.dart' as app_bar;
 import '../entities/message_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contacts.dart';
@@ -9,13 +10,21 @@ import '../services/socket_service.dart';
 import '../services/app_state.dart';
 import 'package:provider/provider.dart';
 import '../services/user_status_service.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:uc13_chat/appconstants.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:convert';
+import 'app_theme.dart';
+
+app_bar.Contact convertToAppBarContact(Contact contact) {
+  return app_bar.Contact(
+    id: contact.id,
+    name: contact.name,
+    avatarUrl: contact.avatarUrl,
+  );
+}
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -38,6 +47,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   late final SocketService _socketService;
+  late final AppState _appState;
   String connectionStatus = 'Disconnected';
   final ObservableList<Message> messages = ObservableList<Message>();
 
@@ -47,10 +57,12 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
 
+    
     if (userId != null) {
       final avatarUrl =
           'http://${AppConstants.SERVER_IP}:3000/api/profile-picture/$userId';
       setState(() {
+        // Use NetworkImage diretamente, sem concatenar com outras URLs
         _avatarImage = NetworkImage(avatarUrl);
       });
     } else {
@@ -72,18 +84,28 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       print('Connection established');
     });
 
-    _socketService.on('userStatusChanged', (data) {
-      final userId = data['userId'];
-      final isOnline = data['isOnline'];
-      final appState = Provider.of<AppState>(context, listen: false);
-      appState.setUserStatus(userId, isOnline);
-      if (mounted) {
-        setState(() {
-          // Atualiza a UI se necessário
-        });
-      }
-    });
-
+   _socketService.on('userStatusChanged', (data) {
+     // Verifique se o widget ainda está montado antes de acessar o context
+     if (!_isMounted) return;
+     
+     try {
+       final userId = data['userId'];
+       final isOnline = data['isOnline'];
+       
+       // Armazene a referência ao AppState no initState para evitar acessar o context aqui
+       final appState = Provider.of<AppState>(context, listen: false);
+       appState.setUserStatus(userId, isOnline);
+       
+       if (mounted) {
+         setState(() {
+           // Atualiza a UI se necessário
+         });
+       }
+     } catch (e) {
+       print('Error handling userStatusChanged: $e');
+     }
+   });
+  
     _socketService.on('disconnect', (_) {
       if (_isMounted) {
         setState(() {
@@ -106,9 +128,9 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _socketService.on('user_status', _handleUserStatus);
     _socketService.on('message', _handleNewMessage);
     _socketService.on('avatar_updated', _handleAvatarUpdated);
-  }
+   }
 
-  Timer? _statusCheckTimer;
+   Timer? _statusCheckTimer;
 
   @override
   void initState() {
@@ -214,12 +236,12 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _handleUserStatus(dynamic data) {
-    if (_isMounted && data['userId'] == widget.contact.id) {
-      final appState = Provider.of<AppState>(context, listen: false);
-      appState.setUserStatus(data['userId'], data['status'] == 'online');
-    }
+void _handleUserStatus(dynamic data) {
+  if (_isMounted && data['userId'] == widget.contact.id) {
+    // Use _appState em vez de acessar o context
+    _appState.setUserStatus(data['userId'], data['status'] == 'online');
   }
+}
 
   void _handleNewMessage(dynamic data) {
     if (_isMounted) {
@@ -356,109 +378,118 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final appTheme = Provider.of<AppTheme>(context);
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF1e1e1e),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F2C34),
-        leadingWidth: 100,
-        leading: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            CircleAvatar(
-              backgroundImage: _avatarImage,
-              onBackgroundImageError: (exception, stackTrace) {
-                if (mounted) {
-                  setState(() {
-                    _avatarImage = AssetImage('assets/default_avatar.png');
-                  });
-                }
-              },
-              radius: 18,
-            ),
-          ],
-        ),
-        title: Text(widget.contact.name),
+      backgroundColor: Theme.of(context).colorScheme.background,
+      appBar: app_bar.ChatAppBar(
+        contact: convertToAppBarContact(widget.contact),
+        avatarImage: _avatarImage,
+        onAvatarError: (newImage) {
+          if (mounted) {
+            setState(() {
+              _avatarImage = newImage;
+            });
+          }
+        },
       ),
       body: Column(
         children: [
           // Barra de status da conexão
           Container(
             padding: const EdgeInsets.all(8.0),
-            color: const Color(0xFF252526), // Fundo secundário
-            child: Text(
-              connectionStatus,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFd4d4d4), // Texto cinza claro
-              ),
+            color: Theme.of(context).colorScheme.surface,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  connectionStatus,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontFamily: appTheme.fontFamily,
+                  ),
+                ),
+                if (connectionStatus != 'Connected')
+                  TextButton.icon(
+                    icon: Icon(Icons.refresh),
+                    label: Text('Reconectar'),
+                    onPressed: () async {
+                      await _socketService.reconnect();
+                      setState(() {
+                        connectionStatus = _socketService.connectionStatus;
+                      });
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      textStyle: TextStyle(fontFamily: appTheme.fontFamily),
+                    ),
+                  ),
+              ],
             ),
           ),
-
+  
           // Lista de mensagens
           Expanded(
             child: Container(
-              color: const Color(0xFF1e1e1e), // Fundo principal
+              color: Theme.of(context).colorScheme.background,
               child: ListMessageView(messages: messages),
             ),
           ),
-
+  
           // Campo de texto e botões
           Container(
-            padding: const EdgeInsets.all(8.0),
-            color: const Color.fromARGB(255, 37, 38, 37),
-            child: Column(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            color: Theme.of(context).colorScheme.surface,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        focusNode: _messageFocusNode,
-                        controller: _controller,
-                        decoration: InputDecoration(
-                          border: const OutlineInputBorder(),
-                          labelText: 'Enter message',
-                          labelStyle: TextStyle(color: Color(0xFFd4d4d4)),
-                        ),
-                        style: const TextStyle(color: Color(0xFFd4d4d4)),
-                        onSubmitted: (_) => _sendMessage(),
-                        textInputAction: TextInputAction.send,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.attach_file, color: Color(0xFFd4d4d4)),
-                      //TODO implementar a função de envio de arquivos
-                      onPressed: () => _uploadFile(widget.token),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.send, color: Color(0xFFd4d4d4)),
-                      onPressed: _sendMessage,
-                    ),
-                  ],
+                // Botão de anexo
+                IconButton(
+                  icon: Icon(
+                    Icons.attach_file,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                  onPressed: () => _uploadFile(widget.token),
                 ),
-                //Espaço entre as rows
-                SizedBox(height: 8.0),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed:
-                          connectionStatus == 'Connected' ? _sendMessage : null,
-                      child: const Text('Send Message'),
+                // Campo de texto
+                Expanded(
+                  child: TextField(
+                    focusNode: _messageFocusNode,
+                    controller: _controller,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24.0),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        ),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                      hintText: 'Digite uma mensagem',
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        fontFamily: appTheme.fontFamily,
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface,
                     ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        await _socketService.reconnect();
-                        setState(() {
-                          connectionStatus = _socketService.connectionStatus;
-                        });
-                      },
-                      child: const Text('Reconnect'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontFamily: appTheme.fontFamily,
                     ),
-                  ],
+                    onSubmitted: (_) => _sendMessage(),
+                    textInputAction: TextInputAction.send,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                  ),
+                ),
+                // Botão de enviar
+                IconButton(
+                  icon: Icon(
+                    Icons.send,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  onPressed: _sendMessage,
                 ),
               ],
             ),

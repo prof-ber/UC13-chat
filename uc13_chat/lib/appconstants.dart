@@ -1,3 +1,3 @@
 class AppConstants {
-  static const String SERVER_IP = "172.17.9.149";
+  static const String SERVER_IP = "172.17.9.139";
 }
